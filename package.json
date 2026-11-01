@@ -1,0 +1,62 @@
+{
+  "name": "ls25-launcher",
+  "version": "1.0.0",
+  "description": "Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25",
+  "main": "main.js",
+  "author": "AgrarJulian",
+  "license": "MIT",
+  "homepage": "https://github.com/AgrarJulian/LS-Launcher",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AgrarJulian/LS-Launcher.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AgrarJulian/LS-Launcher/issues"
+  },
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win portable --x64",
+    "build:installer": "electron-builder --win nsis --x64",
+    "build:all": "electron-builder --win portable nsis --x64"
+  },
+  "build": {
+    "appId": "de.agrarjulian.ls25launcher",
+    "productName": "LS25 Launcher",
+    "copyright": "Copyright © 2026 AgrarJulian – MIT-Lizenz",
+    "artifactName": "LS25-Launcher-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "LS25 Launcher"
+    }
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.1"
+  },
+  "devDependencies": {
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0"
+  }
+}
