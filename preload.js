@@ -1,6 +1,6 @@
 'use strict';
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args);
 
@@ -21,9 +21,23 @@ contextBridge.exposeInMainWorld('launcher', {
   pick: (kind) => invoke('dialog:pick', kind),
   openFolder: (which) => invoke('shell:openFolder', which),
   openExternal: (url) => invoke('shell:external', url),
+  pathFor: (file) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return '';
+    }
+  },
+  modFolderInfo: () => invoke('modfolder:info'),
+  applyProfile: () => invoke('profile:apply'),
   mods: {
-    list: () => invoke('mods:list'),
-    trash: (name) => invoke('mods:trash', name)
+    list: (spec) => invoke('mods:list', spec),
+    toggle: (file) => invoke('mods:toggle', file),
+    trash: (file) => invoke('mods:trash', file),
+    reveal: (file) => invoke('mods:reveal', file),
+    install: (files, overwrite) => invoke('mods:install', files, overwrite),
+    conflicts: () => invoke('mods:conflicts'),
+    modhub: (q) => invoke('modhub:check', q)
   },
   saves: {
     list: () => invoke('saves:list')
@@ -33,6 +47,9 @@ contextBridge.exposeInMainWorld('launcher', {
     create: (slot) => invoke('backup:create', slot),
     restore: (file) => invoke('backup:restore', file),
     remove: (file) => invoke('backup:delete', file)
+  },
+  log: {
+    analyze: (sig) => invoke('log:analyze', sig)
   },
   status: {
     check: () => invoke('status:check')

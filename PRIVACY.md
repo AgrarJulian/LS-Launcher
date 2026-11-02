@@ -1,6 +1,6 @@
 # Datenschutzbestimmungen – LS25 Launcher
 
-Stand: 1. November 2026
+Stand: 2. November 2026
 
 Der LS25 Launcher ist ein freies Open-Source-Projekt (MIT-Lizenz) und ein inoffizielles Community-Werkzeug. Er steht in keiner Verbindung mit der GIANTS Software GmbH.
 
@@ -14,23 +14,25 @@ Alle Daten bleiben auf deinem Computer. Der Launcher speichert lediglich seine E
 
 - Pfade zur Spiel-Installation, zum Profil-Ordner und zum Backup-Ordner
 - Hof-Profile (Name, Hofname, Notizen, Startoptionen)
-- Eigene Server-Einträge (Name, Host, Port) für die Statusprüfung
+- Eigene Server-Einträge (Name, Host, Port, optionale Statistik-Adresse) für die Statusprüfung
+- Einstellungen der Hof-Profile, inkl. Mod-Ordner und zugeordnetem Savegame
 - Launcher-Einstellungen
 
 Backups deiner Spielstände werden als ZIP-Dateien in dem Ordner abgelegt, den du in den Einstellungen festlegst. Du kannst alle Daten jederzeit löschen, indem du die genannte Konfigurationsdatei und den Backup-Ordner entfernst.
 
 ## Zugriff auf Dateien
 
-Der Launcher liest und verändert nur Dateien, die für seine Funktionen nötig sind: den Mod-Ordner, die Savegame-Ordner und den Shader-Cache im konfigurierten Profil-Ordner sowie den Backup-Ordner. Gelöschte Mods und Backups werden in den Papierkorb verschoben.
+Der Launcher liest und verändert nur Dateien, die für seine Funktionen nötig sind: die `gameSettings.xml` (Mod-Ordner-Eintrag; vorher wird eine Kopie `gameSettings.xml.ls25launcher.bak` angelegt), den Mod-Ordner (Mods werden zum Deaktivieren in `.bak` umbenannt), die Savegame-Ordner, die Log-Datei und den Shader-Cache im konfigurierten Profil-Ordner sowie den Backup-Ordner. Gelöschte Mods und Backups werden in den Papierkorb verschoben.
 
 ## Netzwerkverbindungen
 
-Die einzige Netzwerkaktivität ist die Seite **Server Status**. Beim Öffnen der Seite oder beim Klick auf „Prüfen“ verbindet sich der Launcher:
+Der Launcher verbindet sich nur dann mit dem Internet, wenn du die jeweilige Funktion benutzt:
 
-- per HTTPS mit `www.giants-software.com` und `www.farming-simulator.com`, um deren Erreichbarkeit zu messen, und
-- per TCP mit den Servern, die du selbst eingetragen hast.
+- **Server Status:** per HTTPS mit `www.giants-software.com` und `www.farming-simulator.com`, um deren Erreichbarkeit zu messen.
+- **Eigene Server:** Für Server, die du selbst einträgst, wird der Spielport per TCP geprüft und, falls du eine Statistik-Adresse angegeben hast, diese Adresse per HTTP(S) abgerufen (Spieleranzahl, Map, Spielernamen). Die Adresse kann einen Zugangscode enthalten; sie wird nur lokal in deiner Konfigurationsdatei gespeichert.
+- **ModHub-Prüfung:** Beim Klick auf „ModHub prüfen“ werden die Titel deiner installierten Mods an `www.farming-simulator.com` gesendet, um nach neueren Versionen zu suchen. Es werden keine Dateien hochgeladen.
 
-Dabei werden keine Daten über dich oder deinen Computer gesendet. Wie bei jeder Internetverbindung sehen die angefragten Server deine IP-Adresse; für deren Verarbeitung gelten die Datenschutzbestimmungen der jeweiligen Betreiber.
+Dabei werden keine weiteren Daten über dich oder deinen Computer gesendet. Wie bei jeder Internetverbindung sehen die angefragten Server deine IP-Adresse; für deren Verarbeitung gelten die Datenschutzbestimmungen der jeweiligen Betreiber.
 
 Links zu GitHub werden nur geöffnet, wenn du sie anklickst, und in deinem Standardbrowser angezeigt.
 
