@@ -9,6 +9,13 @@ Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25.
 2. Run the `.exe` file (portable version – no installation required).
 3. Select your FS25 game path and your mod folder in the settings.
 
+## 🐛 Bug Reports & Feedback
+Found a bug or have a feature idea? Open an issue on **[GitHub Issues](https://github.com/AgrarJulian/LS-Launcher/issues)** or message me directly on Discord:
+
+```text
+julian_0408__
+```
+
 ## Funktionen
 
 - **Starten** – Start-Button, aktives Profil, Schnelleinstellungen (Dev Mode, Shader Cache leeren, Intro überspringen, Auto-Backup vor dem Start)
