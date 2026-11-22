@@ -4,7 +4,7 @@
 
 # Agri Nexus v1.0.0-beta
 
-**Freies Open-Source-Verwaltungstool, Mod-Manager und Companion für den Landwirtschafts-Simulator 25.**
+**Free, open-source management tool, mod manager, and companion app for Farming Simulator 25.**
 
 ![Downloads](https://img.shields.io/github/downloads/AgrarJulian/LS-Launcher/total?style=for-the-badge&color=84cc16)
 ![Release](https://img.shields.io/github/v/release/AgrarJulian/LS-Launcher?include_prereleases&style=for-the-badge&color=65a30d)
@@ -17,58 +17,58 @@
 
 ## 📥 Download & Installation
 
-1. Lade die neueste Version (`Agri-Nexus-1.0.0-beta-x64.exe`) unter **[Releases](https://github.com/AgrarJulian/LS-Launcher/releases)** herunter.
-2. Starte die `.exe`-Datei (portable Version – keine Installation erforderlich).
-3. Wähle in den **Einstellungen** deinen LS25-Spielpfad sowie deinen gewünschten Mod-Ordner aus.
+1. Download the latest version (`Agri-Nexus-1.0.0-beta-x64.exe`) from **[Releases](https://github.com/AgrarJulian/LS-Launcher/releases)**.
+2. Run the `.exe` file (portable version – no installation required).
+3. Select your FS25 game path and your desired mod folder in **Settings**.
 
-> **Hinweis zu Windows SmartScreen:** Da die `.exe` aktuell nicht digital signiert ist, zeigt Windows beim ersten Start eventuell eine Schutzmeldung an. Klicke dort einfach auf **„Weitere Informationen“** und anschließend auf **„Trotzdem ausführen“**.
+> **Windows SmartScreen Note:** Because the `.exe` is currently not digitally signed, Windows may display a security warning on first launch. Simply click **"More info"** and then **"Run anyway"**.
 
 ---
 
-## ✨ Funktionen
+## ✨ Features
 
-### 🚀 Launcher & Profile
-- **Starten:** Direkter Spielstart mit aktivem Profil und Schnelleinstellungen (*Dev Mode*, *Shader Cache leeren*, *Intro überspringen*, *Auto-Backup vor dem Start*).
-- **Hof-Profile:** Eigener Mod-Ordner pro Profil (wird automatisch in die `gameSettings.xml` eingetragen), fest zugeordnetes Savegame, individuelle Mod-Auswahl und Startoptionen.
-- **Discord Rich Presence:** Zeigt live auf Discord dein aktives Hof-Profil, den Spielstatus und die Anzahl geladener Mods an.
+### 🚀 Launcher & Profiles
+- **Launch:** Instant game launch with your active profile and quick toggles (*Dev Mode*, *Clear Shader Cache*, *Skip Intro*, *Auto-Backup before launch*).
+- **Farm Profiles:** Dedicated mod folder per profile (automatically written to `gameSettings.xml`), assigned savegame, custom mod selection, and launch options.
+- **Discord Rich Presence:** Displays your active farm profile, live game status, and loaded mod count on Discord.
 
 ### 📦 Mods & Assets
-- **Mod-Regal:** Übersicht mit Icon, Name, Version, Modder und Fehlerstatus je Mod (Ordner wird direkt aus der `gameSettings.xml` gelesen).
-- **P2P-Mod-Sync:** Synchronisiere private `.zip`-Mods direkt per Raumcode inklusive SHA-256-Abgleich und Fortschrittsanzeige (einzeln oder alle fehlenden Mods auf einmal).
-- **Analyse & Verwaltung:** Konflikt-Checker (Skript-Überschneidungen & Duplikate), Speicherübersicht mit Warnung bei übergroßen Dateien, ModHub-Versionsabgleich *(experimentell)*, Drag-&-Drop-Installer für `.zip`-Dateien sowie 1-Klick-Deaktivierung per `.bak`.
+- **Mod Shelf:** Overview showing icon, name, version, author, and error status per mod (mod folder path is read directly from `gameSettings.xml`).
+- **P2P Mod Sync:** Sync private `.zip` mods directly via room code with SHA-256 verification and progress tracking (individual mods or all missing mods at once).
+- **Analysis & Management:** Conflict checker (script overlaps & duplicates), storage overview with warnings for oversized files, ModHub version check *(experimental)*, drag-and-drop installer for `.zip` mods, and 1-click deactivation via `.bak`.
 
-### 💾 Saves, Backups & Werkzeuge
-- **Saves & Backups:** Manuelle und automatische Spielstand-Sicherungen mit Zeitstempel, 1-Klick-Wiederherstellung (inkl. Sicherheitskopie) sowie einem **Savegame-Editor** für numerische XML-Werte mit Vorher-Backup und Strukturdiagnose.
-- **Live & Werkstatt:** Lokale WLAN-Companion-Webseite mit Live-Savegame-/Hofdaten und optionalem Telemetrie-POST-Endpunkt. Dazu Dev-Makro-Deck, Controllerbelegungs-Snapshots, benannte Grafik-Presets (`gameSettings.xml`), Mod-Bloat-Scanner, Ladezeit-Analyse (`log.txt`) und Modpack-Manifest-Export.
-- **Log-Analyse:** Liest die `log.txt` (optional live), übersetzt Fehler und Warnungen verständlich und ordnet sie direkt den verursachenden Mods zu.
-- **LS-Rechner:** Integrierte Rechner für Ertrag & Gewinn, Futterbedarf, Mischration (TMR) und Feld-Arbeitszeit.
-- **Screenshots:** Galerie für Bilder aus dem Spiel-Profilordner mit Kopier-/Teilen-Funktion, Kontext-Tags und Vorher/Nachher-Vergleich.
+### 💾 Saves, Backups & Tools
+- **Saves & Backups:** Manual and automatic savegame backups with timestamps, 1-click restore (with safety copy), plus a **Savegame Editor** for numeric XML values with full pre-edit backups and XML structure diagnostics.
+- **Live & Workshop:** Local Wi-Fi companion webpage displaying live savegame/farm data and an optional telemetry POST endpoint. Includes a Dev Macro Deck, controller binding snapshots, named graphics presets (`gameSettings.xml`), mod bloat scanner, load-time analysis (`log.txt`), and modpack manifest export.
+- **Log Analyzer:** Reads `log.txt` (optionally live), translates errors and warnings into plain language, and links them directly to the responsible mods.
+- **FS Calculators:** Built-in calculators for yield & profit, feed requirements, Total Mixed Ration (TMR), and field work time.
+- **Screenshots:** Gallery for images from your game profile folder, including copy/share options, context tags, and before/after comparison.
 
-### 🌐 Multiplayer, Server & RP-Network
-- **Server Status:** Statusabfrage für GIANTS-Dienste und eigene Dedicated Server inklusive Spieleranzahl, aktiver Map und Spielernamen.
-- **RP & Party Network:** WebRTC-Lobbys mit Whitelist/Regelbestätigung, Höfen & Rollen, virtuellen Konten, Fuhrparkmiete, Lohnunternehmer-Preisen, Feldnotizen, Lieferscheinen sowie Event- und Schichtverwaltung.
-- **Admin-Savegame-Sync:** Ruft eine konfigurierte HTTPS-Quelle minütlich ab, solange die RP-Ansicht geöffnet ist.
+### 🌐 Multiplayer, Server & RP Network
+- **Server Status:** Status monitor for GIANTS services and custom dedicated servers including player count, active map, and player names.
+- **RP & Party Network:** WebRTC lobbies with whitelist/rule confirmation, farms & roles, virtual accounts, fleet rentals, contractor rates, field notes, delivery notes, and event/shift management.
+- **Admin Savegame Sync:** Polls a configured HTTPS source every minute while the RP view is open.
 
 ---
 
-## ⚙️ Startoptionen
+## ⚙️ Launch Options
 
-| Option | Startparameter / Aktion |
+| Option | Launch Parameter / Action |
 | :--- | :--- |
 | **Dev Mode** | `-cheats -console` |
-| **Intro überspringen** | `-skipStartVideos` |
-| **Shader Cache leeren** | Löscht `shader_cache` im Profil-Ordner vor dem Spielstart |
-| **Savegame direkt laden** | `-autoStartSavegameId <Nr>` *(experimentell)* |
+| **Skip Intro** | `-skipStartVideos` |
+| **Clear Shader Cache** | Deletes `shader_cache` in the profile folder before launch |
+| **Direct Savegame Load** | `-autoStartSavegameId <No>` *(experimental)* |
 
 ---
 
-## 🛠️ Entwicklung & Build
+## 🛠️ Development & Build
 
-**Voraussetzung:** [Node.js](https://nodejs.org) 20 oder neuer.
+**Prerequisite:** [Node.js](https://nodejs.org) 20 or newer.
 
 ```bash
-# Abhängigkeiten installieren
+# Install dependencies
 npm install
 
-# Launcher im Entwicklungsmodus starten
+# Start the launcher in development mode
 npm start
