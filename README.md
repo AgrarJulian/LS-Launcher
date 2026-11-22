@@ -57,6 +57,8 @@ Der Build sollte unter Windows ausgeführt werden. Dort wird auch das Icon in di
 | Shader Cache leeren | löscht `shader_cache` im Profil-Ordner vor dem Start |
 | Savegame direkt laden | `-autoStartSavegameId <Nr>` (experimentell) |
 
+![GitHub Downloads](https://img.shields.io/github/downloads/AgrarJulian/LS-Launcher/total?style=for-the-badge&color=84cc16)
+
 ## Lizenz
 
 [MIT](LICENSE) · Datenschutz: [PRIVACY.md](PRIVACY.md)
