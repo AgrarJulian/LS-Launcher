@@ -4,6 +4,11 @@ Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25.
 
 ![Logo](assets/icon.png)
 
+## 📥 Download & Installation
+1. Download the latest version (`Agri-Nexus-1.0.0-beta-x64.exe`) from **[Releases](https://github.com/AgrarJulian/LS-Launcher/releases)**.
+2. Run the `.exe` file (portable version – no installation required).
+3. Select your FS25 game path and your mod folder in the settings.
+
 ## Funktionen
 
 - **Starten** – Start-Button, aktives Profil, Schnelleinstellungen (Dev Mode, Shader Cache leeren, Intro überspringen, Auto-Backup vor dem Start)
@@ -57,7 +62,10 @@ Der Build sollte unter Windows ausgeführt werden. Dort wird auch das Icon in di
 | Shader Cache leeren | löscht `shader_cache` im Profil-Ordner vor dem Start |
 | Savegame direkt laden | `-autoStartSavegameId <Nr>` (experimentell) |
 
-![GitHub Downloads](https://img.shields.io/github/downloads/AgrarJulian/LS-Launcher/total?style=for-the-badge&color=84cc16)
+![Downloads](https://img.shields.io/github/downloads/AgrarJulian/LS-Launcher/total?style=for-the-badge&color=84cc16)
+![Release](https://img.shields.io/github/v/release/AgrarJulian/LS-Launcher?include_prereleases&style=for-the-badge&color=65a30d)
+![License](https://img.shields.io/github/license/AgrarJulian/LS-Launcher?style=for-the-badge&color=3f6212)
+![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue?style=for-the-badge)
 
 ## Lizenz
 
