@@ -1,0 +1,65 @@
+{
+  "name": "agri-nexus",
+  "version": "1.0.0-beta",
+  "description": "Agri Nexus – Verwaltung für den Landwirtschafts-Simulator 25",
+  "main": "main.js",
+  "author": "AgrarJulian",
+  "license": "MIT",
+  "homepage": "https://github.com/AgrarJulian/LS-Launcher",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AgrarJulian/LS-Launcher.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AgrarJulian/LS-Launcher/issues"
+  },
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win portable --x64",
+    "build:installer": "electron-builder --win nsis --x64",
+    "build:all": "electron-builder --win portable nsis --x64"
+  },
+  "build": {
+    "appId": "de.agrinexus.launcher",
+    "productName": "Agri Nexus",
+    "copyright": "Copyright © 2026 AgrarJulian – MIT-Lizenz",
+    "artifactName": "Agri-Nexus-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "lib/**/*",
+      "renderer/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Agri Nexus"
+    }
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.1",
+    "discord-rpc": "^4.0.1",
+    "peerjs": "^1.5.5"
+  },
+  "devDependencies": {
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0"
+  }
+}
