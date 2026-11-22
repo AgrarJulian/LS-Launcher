@@ -1,4 +1,6 @@
 node_modules/
 dist/
+dist-*/
+Agri-Nexus-GitHub-Upload/
 *.log
 .DS_Store

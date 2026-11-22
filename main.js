@@ -4,14 +4,20 @@ const { app, BrowserWindow, ipcMain, shell, dialog, Menu } = require('electron')
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const http = require('http');
+const os = require('os');
 const { spawn, execFile } = require('child_process');
 const AdmZip = require('adm-zip');
 
 const { ZipFile } = require('./lib/zip');
-const { readModInfo, scanScripts, VALID_ID } = require('./lib/modinfo');
+const { readModInfo, readModIcon, scanScripts, VALID_ID } = require('./lib/modinfo');
 const gameSettings = require('./lib/gamesettings');
 const { parseLog } = require('./lib/log');
 const netlib = require('./lib/net');
+const crypto = require('crypto');
+const RPC = require('discord-rpc');
+const DISCORD_APP_ID = '1567209388068970666';
+let companionServer = null, companionToken = '', companionTelemetry = null;
 
 const tick = () => new Promise((r) => setImmediate(r));
 
@@ -46,6 +52,8 @@ function defaults() {
     profilePath: path.join(app.getPath('documents'), 'My Games', 'FarmingSimulator2025'),
     backupPath: path.join(app.getPath('userData'), 'backups'),
     logPath: '',
+    modsPath: '',
+    lowPerformanceMode: false,
     closeOnLaunch: false,
     autoBackup: false,
     autoBackupKeep: 10,
@@ -103,6 +111,8 @@ function sanitizeConfig(input) {
     profilePath: str(c.profilePath) || d.profilePath,
     backupPath: str(c.backupPath) || d.backupPath,
     logPath: str(c.logPath),
+    modsPath: str(c.modsPath),
+    lowPerformanceMode: c.lowPerformanceMode === true,
     closeOnLaunch: !!c.closeOnLaunch,
     autoBackup: !!c.autoBackup,
     autoBackupKeep: Math.min(50, Math.max(1, parseInt(c.autoBackupKeep, 10) || 10)),
@@ -210,6 +220,7 @@ function isGameRunning() {
  */
 function resolveModsDir(cfg, spec) {
   const p = spec || activeProfile(cfg);
+  if (cfg.modsPath) return { dir: path.normalize(cfg.modsPath), source: 'settings', settingsFile: gameSettings.settingsFile(cfg.profilePath) };
   if (p.modFolderMode === 'custom' && p.modFolder) return { dir: path.normalize(p.modFolder), source: 'profile' };
   if (p.modFolderMode === 'default') return { dir: path.join(cfg.profilePath, 'mods'), source: 'default' };
   const o = gameSettings.readOverride(cfg.profilePath);
@@ -272,6 +283,7 @@ function applyModSelection(dir, selection) {
 // --- Mod-Liste ----------------------------------------------------------------
 
 const modCache = new Map();
+const modIconCache = new Map();
 const scriptCache = new Map();
 
 async function listMods(dir) {
@@ -295,7 +307,7 @@ async function listMods(dir) {
     let info = modCache.get(key);
     if (!info) {
       try {
-        info = readModInfo(full, name);
+        info = readModInfo(full, name, { includeIcon: false });
         if (e.isDirectory()) info.size = dirSize(full);
         modCache.set(key, info);
       } catch (err) {
@@ -318,11 +330,79 @@ ipcMain.handle('mods:list', async (_e, spec) => {
   return { ...out, source: r.source, settingsFile: r.settingsFile || '' };
 });
 
+ipcMain.handle('mods:icon', (_e, file) => {
+  const cfg = loadConfig();
+  const mp = modPath(cfg, file);
+  if (!mp || !fs.existsSync(mp.target)) return null;
+  try {
+    const st = fs.statSync(mp.target);
+    const key = `${path.resolve(mp.target)}|${st.mtimeMs}|${st.size}`;
+    if (modIconCache.has(key)) return modIconCache.get(key);
+    const icon = readModIcon(mp.target, path.basename(mp.target));
+    if (icon) {
+      modIconCache.set(key, icon);
+      if (modIconCache.size > 300) modIconCache.delete(modIconCache.keys().next().value);
+    }
+    return icon;
+  } catch { return null; }
+});
+
 function modPath(cfg, file) {
   const { dir } = resolveModsDir(cfg);
   const target = path.join(dir, String(file));
   return inside(dir, target) ? { dir, target } : null;
 }
+
+ipcMain.handle('mods:export-manifest', async () => {
+  const cfg = loadConfig(), profile = activeProfile(cfg), { dir } = resolveModsDir(cfg);
+  const mods = [];
+  try {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (/\.bak$/i.test(e.name)) continue;
+      const id = e.name.replace(/\.zip$/i, ''), full = path.join(dir, e.name);
+      if (profile.modMode === 'selection' && !profile.modSelection.some((x) => x.toLowerCase() === id.toLowerCase())) continue;
+      if (!(e.isDirectory() && fs.existsSync(path.join(full, 'modDesc.xml')) || e.isFile() && /\.zip$/i.test(e.name))) continue;
+      const st = fs.statSync(full);
+      let info = { title: id, version: '', author: '' };
+      try { info = readModInfo(full, e.name); } catch { /* Include as an unresolved manifest entry. */ }
+      mods.push({ id, file: e.name, title: info.title, version: info.version, author: info.author, size: e.isFile() ? st.size : dirSize(full) });
+    }
+  } catch (err) { return { ok: false, error: err.message }; }
+  const output = await dialog.showSaveDialog(win, { defaultPath: `${profile.name.replace(/[^\w.-]+/g, '_')}-Agri-Nexus-Modpack.json`, filters: [{ name: 'Agri Nexus Modpack-Manifest', extensions: ['json'] }] });
+  if (output.canceled || !output.filePath) return { ok: false, canceled: true };
+  const manifest = { format: 'Agri Nexus Modpack Manifest', version: 1, createdAt: new Date().toISOString(), profile: profile.name, farm: profile.farm, game: 'Farming Simulator 25', count: mods.length, mods };
+  try { fs.writeFileSync(output.filePath, JSON.stringify(manifest, null, 2), 'utf8'); return { ok: true, file: output.filePath, count: mods.length }; }
+  catch (err) { return { ok: false, error: err.message }; }
+});
+
+ipcMain.handle('mods:performance-report', async () => {
+  const cfg = loadConfig(), { dir } = resolveModsDir(cfg), mods = [], assets = [];
+  if (!fs.existsSync(dir)) return { ok: false, error: 'Mod-Ordner nicht gefunden.' };
+  let totalBytes = 0;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (/\.bak$/i.test(e.name)) continue;
+    const full = path.join(dir, e.name);
+    try {
+      if (e.isFile() && /\.zip$/i.test(e.name)) {
+        const st = fs.statSync(full); totalBytes += st.size;
+        const zip = new ZipFile(full); let expanded = 0;
+        try {
+          for (const entry of zip.entries.values()) {
+            expanded += entry.usize;
+            const ext = path.extname(entry.name).toLowerCase();
+            if (['.dds', '.png', '.tga', '.i3d'].includes(ext) && (entry.usize >= 64 * 1024 * 1024 || ['.png', '.tga'].includes(ext) && entry.usize >= 16 * 1024 * 1024 || ext === '.dds' && entry.usize >= 32 * 1024 * 1024 && entry.method === 0)) assets.push({ mod: e.name, file: entry.name, size: entry.usize, type: ext, note: entry.method === 0 && ext === '.dds' ? 'Große DDS-Datei ohne ZIP-Kompression' : 'Sehr große Einzeldatei' });
+          }
+        } finally { zip.close(); }
+        mods.push({ name: e.name, size: st.size, expanded, large: st.size >= 512 * 1024 * 1024 });
+      } else if (e.isDirectory() && fs.existsSync(path.join(full, 'modDesc.xml'))) {
+        const size = dirSize(full); totalBytes += size; mods.push({ name: e.name, size, expanded: size, large: size >= 512 * 1024 * 1024 });
+      }
+    } catch (err) { mods.push({ name: e.name, size: 0, large: false, error: err.message }); }
+  }
+  mods.sort((a, b) => b.size - a.size);
+  assets.sort((a, b) => b.size - a.size);
+  return { ok: true, totalBytes, mods: mods.slice(0, 30), largeCount: mods.filter((m) => m.large).length, assets: assets.slice(0, 50), assetCount: assets.length, log: getLogAnalysis(cfg, null) };
+});
 
 ipcMain.handle('mods:toggle', async (_e, file) => {
   const cfg = loadConfig();
@@ -505,6 +585,42 @@ function findLog(cfg) {
   return hit ? { file: hit } : { file: '', tried };
 }
 
+let bootTimer = null;
+function readBootRuns() {
+  try { return JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'boot-times.json'), 'utf8')); } catch { return []; }
+}
+function saveBootRun(run) {
+  const file = path.join(app.getPath('userData'), 'boot-times.json');
+  const runs = [run, ...readBootRuns()].slice(0, 30);
+  try { fs.writeFileSync(file, JSON.stringify(runs, null, 2), 'utf8'); } catch { /* best effort */ }
+}
+function startBootTracker(cfg) {
+  if (bootTimer) clearInterval(bootTimer);
+  const startedAt = Date.now(), logFile = findLog(cfg).file;
+  if (!logFile) { saveBootRun({ startedAt, durationMs: null, marker: 'Keine log.txt gefunden', profile: activeProfile(cfg).name }); return; }
+  let previousSize = 0, previousMtime = 0, previousBirthtime = 0, previousIno = 0;
+  try { const st = fs.statSync(logFile); previousSize = st.size; previousMtime = st.mtimeMs; previousBirthtime = st.birthtimeMs; previousIno = st.ino; } catch {}
+  bootTimer = setInterval(() => {
+    if (Date.now() - startedAt > 10 * 60 * 1000) {
+      clearInterval(bootTimer); bootTimer = null;
+      saveBootRun({ startedAt, durationMs: null, marker: 'Kein Ladeabschluss-Marker innerhalb von 10 Minuten', profile: activeProfile(cfg).name }); return;
+    }
+    try {
+      const st = fs.statSync(logFile);
+      if (st.size === previousSize && st.mtimeMs === previousMtime && st.birthtimeMs === previousBirthtime && st.ino === previousIno) return;
+      const reset = st.size < previousSize || st.size === previousSize && st.mtimeMs !== previousMtime || st.birthtimeMs !== previousBirthtime || st.ino !== previousIno;
+      const offset = reset ? Math.max(0, st.size - 512 * 1024) : Math.max(previousSize, st.size - 512 * 1024);
+      const length = Math.max(0, st.size - offset), fd = fs.openSync(logFile, 'r'), buffer = Buffer.alloc(length);
+      try { fs.readSync(fd, buffer, 0, length, offset); } finally { fs.closeSync(fd); }
+      previousSize = st.size; previousMtime = st.mtimeMs; previousBirthtime = st.birthtimeMs; previousIno = st.ino;
+      const text = buffer.toString('utf8');
+      const marker = text.match(/(?:finished|completed)\s+(?:loading|starting)|(?:loading|starting).{0,40}(?:finished|complete|completed)|(?:game|map).{0,30}(?:ready|loaded)|(?:savegame|career).{0,30}loaded/i);
+      if (marker) { clearInterval(bootTimer); bootTimer = null; saveBootRun({ startedAt, durationMs: Date.now() - startedAt, marker: marker[0], profile: activeProfile(cfg).name }); }
+    } catch { /* log created after game spawn */ }
+  }, 1500).unref();
+}
+ipcMain.handle('performance:boot', () => readBootRuns());
+
 function getLogAnalysis(cfg, lastSig) {
   const f = findLog(cfg);
   if (!f.file) return { ok: false, error: 'Keine Log-Datei gefunden.', tried: f.tried || [cfg.logPath] };
@@ -559,7 +675,7 @@ function createWindow() {
     minHeight: 660,
     frame: false,
     backgroundColor: '#0a0d0b',
-    title: 'LS25 Launcher',
+    title: 'Agri Nexus',
     icon: path.join(__dirname, 'assets', 'icon.png'),
     show: false,
     webPreferences: {
@@ -589,6 +705,9 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.whenReady().then(createWindow);
   app.on('window-all-closed', () => app.quit());
+  app.on('before-quit', () => { try { if (discord) discord.destroy(); } catch {} try { if (companionServer) companionServer.close(); } catch {} });
+  app.whenReady().then(startDiscordRPC);
+  setInterval(() => { if (!win || !win.isMinimized()) updatePresence(); }, 60000).unref();
 }
 
 // ---------------------------------------------------------------------------
@@ -615,6 +734,7 @@ ipcMain.handle('shell:external', (_e, url) => {
   }
   return false;
 });
+ipcMain.handle('clipboard:writeText', (_e, value) => { require('electron').clipboard.writeText(String(value || '').slice(0, 2000)); return true; });
 
 ipcMain.handle('shell:openFolder', async (_e, which) => {
   const cfg = loadConfig();
@@ -644,7 +764,15 @@ ipcMain.handle('dialog:pick', async (_e, kind) => {
 });
 
 ipcMain.handle('config:get', () => loadConfig());
-ipcMain.handle('config:set', (_e, cfg) => saveConfig(cfg));
+ipcMain.handle('config:set', (_e, cfg) => {
+  const saved = saveConfig(cfg);
+  try {
+    if (saved.modsPath) { fs.mkdirSync(saved.modsPath, { recursive: true }); gameSettings.writeOverride(saved.profilePath, path.normalize(saved.modsPath)); }
+    else if (fs.existsSync(gameSettings.settingsFile(saved.profilePath))) gameSettings.writeOverride(saved.profilePath, null);
+  }
+  catch (err) { return { ...saved, settingsError: err.message }; }
+  return saved;
+});
 ipcMain.handle('game:detect', () => detectGame());
 ipcMain.handle('app:info', () => ({ version: app.getVersion(), platform: process.platform, userData: app.getPath('userData') }));
 
@@ -654,6 +782,260 @@ ipcMain.handle('modfolder:info', () => {
   const o = gameSettings.readOverride(cfg.profilePath);
   return { ...r, gameSettings: o };
 });
+
+const syncTransfers = new Map();
+const profilePackages = new Map();
+const hashCache = new Map();
+const HASH_CACHE_LIMIT = 5000;
+function hashFile(file, key, onProgress) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(file, { highWaterMark: 1024 * 1024 });
+    const limited = loadConfig().lowPerformanceMode;
+    const bytesPerSecond = 24 * 1024 * 1024;
+    let bytes = 0;
+    stream.on('data', (chunk) => {
+      hash.update(chunk); bytes += chunk.length;
+      if (onProgress) onProgress(bytes);
+      if (limited) {
+        const wait = Math.max(0, Math.ceil(bytes * 1000 / bytesPerSecond) - (Date.now() - started));
+        if (wait) { stream.pause(); setTimeout(() => stream.resume(), wait); }
+      }
+    });
+    const started = Date.now();
+    stream.on('error', reject);
+    stream.on('end', () => {
+      const digest = hash.digest('hex');
+      hashCache.set(key, digest);
+      if (hashCache.size > HASH_CACHE_LIMIT) hashCache.delete(hashCache.keys().next().value);
+      resolve(digest);
+    });
+  });
+}
+ipcMain.handle('sync:profile', async () => {
+  const cfg = loadConfig(), profile = activeProfile(cfg), { dir } = resolveModsDir(cfg), zip = new AdmZip();
+  zip.addFile('profile.json', Buffer.from(JSON.stringify(profile), 'utf8'));
+  if (fs.existsSync(dir)) for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (/\.bak$/i.test(e.name)) continue;
+    const full = path.join(dir, e.name);
+    if (e.isFile() && /\.zip$/i.test(e.name)) zip.addLocalFile(full, 'mods');
+    else if (e.isDirectory() && fs.existsSync(path.join(full, 'modDesc.xml'))) zip.addLocalFolder(full, `mods/${e.name}`);
+  }
+  if (profile.savegame && /^savegame\d+$/.test(profile.savegame)) {
+    const save = path.join(cfg.profilePath, profile.savegame);
+    if (fs.existsSync(save)) zip.addLocalFolder(save, `savegames/${profile.savegame}`);
+    else profile.savegame = '';
+  }
+  const token = crypto.randomBytes(16).toString('hex'), file = path.join(app.getPath('temp'), `agri-nexus-profile-${token}.zip`);
+  await zip.writeZipPromise(file); const size = fs.statSync(file).size; profilePackages.set(token, { file, size });
+  return { token, name: 'AgriNexusProfile.zip', size };
+});
+ipcMain.handle('sync:manifest', async (event) => {
+  const { dir } = resolveModsDir(loadConfig());
+  const items = [];
+  const names = fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => /^[^\\/]+\.zip$/i.test(name)) : [];
+  const totalBytes = names.reduce((sum, name) => { try { return sum + fs.statSync(path.join(dir, name)).size; } catch { return sum; } }, 0);
+  let bytesDone = 0, lastReport = 0;
+  if (fs.existsSync(dir)) for (let index = 0; index < names.length; index++) {
+    const name = names[index];
+    const file = path.join(dir, name);
+    try {
+      const st = fs.statSync(file);
+      if (!st.isFile()) continue;
+      const key = `${path.resolve(file)}|${st.size}|${st.mtimeMs}|${st.ctimeMs}`;
+      let sha256 = hashCache.get(key);
+      if (sha256) { hashCache.delete(key); hashCache.set(key, sha256); bytesDone += st.size; }
+      else {
+        let fileProgress = 0;
+        sha256 = await hashFile(file, key, (current) => {
+          bytesDone += current - fileProgress; fileProgress = current;
+          const now = Date.now();
+          if (now - lastReport >= 500) { lastReport = now; event.sender.send('sync:progress', { done: index, total: names.length, bytesDone, totalBytes, name }); }
+        });
+      }
+      items.push({ name, size: st.size, sha256 });
+      event.sender.send('sync:progress', { done: index + 1, total: names.length, bytesDone, totalBytes, name });
+    } catch { /* file changed during scan */ }
+  }
+  event.sender.send('sync:progress', { done: names.length, total: names.length, bytesDone: totalBytes, totalBytes, complete: true });
+  return { dir, items };
+});
+ipcMain.handle('sync:read', (_e, name, offset, length) => {
+  const pkgToken = String(name).startsWith('profile:') ? String(name).slice(8) : '';
+  const pkg = profilePackages.get(pkgToken);
+  if (pkg) {
+    const start = Math.max(0, Math.min(pkg.size, Number(offset) || 0)), size = Math.max(0, Math.min(48 * 1024, Number(length) || 0, pkg.size - start));
+    const fd = fs.openSync(pkg.file, 'r'), buf = Buffer.alloc(size); try { fs.readSync(fd, buf, 0, size, start); } finally { fs.closeSync(fd); }
+    if (start + size >= pkg.size) { profilePackages.delete(pkgToken); try { fs.rmSync(pkg.file, { force: true }); } catch {} }
+    return buf.toString('base64');
+  }
+  const { dir } = resolveModsDir(loadConfig());
+  const safe = path.basename(String(name));
+  if (!/^[^\\/]+\.zip$/i.test(safe)) throw new Error('Nur ZIP-Mods werden synchronisiert.');
+  const file = path.join(dir, safe), st = fs.statSync(file);
+  const start = Math.max(0, Math.min(st.size, Number(offset) || 0));
+  const size = Math.max(0, Math.min(256 * 1024, Number(length) || 0, st.size - start));
+  const fd = fs.openSync(file, 'r'), buf = Buffer.alloc(size);
+  try { fs.readSync(fd, buf, 0, size, start); } finally { fs.closeSync(fd); }
+  return buf.toString('base64');
+});
+ipcMain.handle('sync:begin', (_e, name, size) => {
+  const safe = path.basename(String(name));
+  if (!(safe === 'AgriNexusProfile.zip' || /^[^\\/]+\.zip$/i.test(safe)) || !Number.isSafeInteger(Number(size)) || Number(size) < 1 || Number(size) > 2 * 1024 * 1024 * 1024) throw new Error('Ungültige Datei oder Dateigröße.');
+  const tmp = path.join(app.getPath('temp'), `agri-nexus-${crypto.randomBytes(12).toString('hex')}.part`);
+  fs.writeFileSync(tmp, ''); const token = crypto.randomBytes(16).toString('hex');
+  syncTransfers.set(token, { tmp, name: safe, size: Number(size), received: 0 }); return token;
+});
+ipcMain.handle('sync:chunk', (_e, token, data) => {
+  const t = syncTransfers.get(String(token)); if (!t) throw new Error('Transfer unbekannt.');
+  const b = Buffer.from(String(data), 'base64'); if (b.length > 256 * 1024 || t.received + b.length > t.size) throw new Error('Ungültiger Datenblock.');
+  fs.appendFileSync(t.tmp, b); t.received += b.length; return t.received;
+});
+ipcMain.handle('sync:finish', async (_e, token) => {
+  const t = syncTransfers.get(String(token)); if (!t) throw new Error('Transfer unbekannt.'); syncTransfers.delete(String(token));
+  try {
+    if (await isGameRunning()) throw new Error('Bitte das Spiel vor dem Import beenden.');
+    if (t.received !== t.size) throw new Error('Transfer unvollständig.');
+    const z = new AdmZip(t.tmp);
+    if (t.name === 'AgriNexusProfile.zip') {
+      const entries = z.getEntries(), safeEntry = (name) => !name.startsWith('/') && !name.includes('\\') && !name.split('/').some((part) => part === '..');
+      if (entries.some((e) => !safeEntry(e.entryName)) || !z.getEntry('profile.json')) throw new Error('Profilpaket ungültig.');
+      const cfg = loadConfig(), incoming = sanitizeProfile(JSON.parse(z.readAsText('profile.json')));
+      incoming.id = `sync-${Date.now()}`; incoming.name = `${incoming.name} (Sync)`; incoming.modFolderMode = 'default'; incoming.modFolder = '';
+      const sourceSave = incoming.savegame;
+      if (sourceSave) {
+        let slot = 1; while (fs.existsSync(path.join(cfg.profilePath, `savegame${slot}`))) slot++;
+        incoming.savegame = `savegame${slot}`;
+      }
+      const modsDir = resolveModsDir(cfg).dir; fs.mkdirSync(modsDir, { recursive: true });
+      for (const e of entries) {
+        if (e.isDirectory || e.entryName === 'profile.json') continue;
+        if (e.entryName.startsWith('mods/')) {
+          const rel = e.entryName.slice(5), dest = path.join(modsDir, rel);
+          if (!inside(modsDir, dest)) throw new Error('Ungültiger Mod-Pfad im Profilpaket.');
+          fs.mkdirSync(path.dirname(dest), { recursive: true });
+          if (fs.existsSync(dest)) fs.copyFileSync(dest, dest + '.sync-backup');
+          fs.writeFileSync(dest, e.getData());
+        } else if (e.entryName.startsWith('savegames/')) {
+          let rel = e.entryName.slice('savegames/'.length);
+          if (sourceSave && incoming.savegame) rel = rel.replace(new RegExp('^' + sourceSave + '(?=/)'), incoming.savegame);
+          const dest = path.join(cfg.profilePath, rel);
+          if (!/^savegame\d+(\\|\/|$)/.test(rel) || !inside(cfg.profilePath, dest)) throw new Error('Ungültiger Savegame-Pfad im Profilpaket.');
+          fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.writeFileSync(dest, e.getData());
+        } else throw new Error('Unbekannter Inhalt im Profilpaket.');
+      }
+      cfg.profiles.push(incoming); cfg.activeProfile = incoming.id; saveConfig(cfg);
+      fs.rmSync(t.tmp, { force: true }); return { ok: true, file: incoming.name, profile: true };
+    }
+    if (!z.getEntry('modDesc.xml')) throw new Error('ZIP enthält keine modDesc.xml.');
+    const { dir } = resolveModsDir(loadConfig()); fs.mkdirSync(dir, { recursive: true });
+    const dest = path.join(dir, t.name); if (fs.existsSync(dest)) { fs.copyFileSync(dest, dest + '.sync-backup'); fs.rmSync(dest, { force: true }); }
+    fs.renameSync(t.tmp, dest); return { ok: true, file: t.name };
+  } catch (err) { try { fs.rmSync(t.tmp, { force: true }); } catch {} return { ok: false, error: err.message }; }
+});
+
+ipcMain.handle('gallery:list', () => {
+  const dir = path.join(loadConfig().profilePath, 'screenshots');
+  if (!fs.existsSync(dir)) return { dir, items: [] };
+  return { dir, items: fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile() && /\.(png|jpe?g|webp)$/i.test(e.name)).map((e) => {
+    const file = path.join(dir, e.name); let tags = null;
+    try { tags = JSON.parse(fs.readFileSync(file + '.agri-nexus.json', 'utf8')); } catch { /* no context tags yet */ }
+    return { name: e.name, mtime: fs.statSync(file).mtimeMs, tags };
+  }).sort((a,b) => b.mtime-a.mtime) };
+});
+function galleryFile(name) { const dir = path.join(loadConfig().profilePath, 'screenshots'), file = path.join(dir, path.basename(String(name))); return inside(dir, file) && /\.(png|jpe?g|webp)$/i.test(file) && fs.existsSync(file) ? file : ''; }
+ipcMain.handle('gallery:image', (_e, name) => { const f = galleryFile(name); if (!f) return ''; const ext = path.extname(f).slice(1).toLowerCase().replace('jpg','jpeg'); return `data:image/${ext};base64,${fs.readFileSync(f).toString('base64')}`; });
+ipcMain.handle('gallery:copy', (_e, name) => { const f = galleryFile(name); if (!f) return false; const { clipboard, nativeImage } = require('electron'); clipboard.writeImage(nativeImage.createFromPath(f)); return true; });
+ipcMain.handle('gallery:reveal', (_e, name) => { const f = galleryFile(name); if (!f) return false; shell.showItemInFolder(f); return true; });
+ipcMain.handle('gallery:open', async () => { const dir = path.join(loadConfig().profilePath, 'screenshots'); if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); return shell.openPath(dir); });
+ipcMain.handle('gallery:tag', (_e, name, input) => {
+  const file = galleryFile(name); if (!file) return { ok: false, error: 'Screenshot nicht gefunden.' };
+  const cfg = loadConfig(), profile = activeProfile(cfg), tags = { profile: String(profile.name).slice(0, 60), profileId: profile.id, savegame: String(input?.savegame || '').slice(0, 32), map: String(input?.map || '').slice(0, 80), taggedAt: Date.now() };
+  if (tags.savegame && !/^savegame\d+$/.test(tags.savegame)) return { ok: false, error: 'Ungültiger Spielstand.' };
+  try { fs.writeFileSync(file + '.agri-nexus.json', JSON.stringify(tags, null, 2), 'utf8'); return { ok: true, tags }; }
+  catch (err) { return { ok: false, error: err.message }; }
+});
+
+function companionState() {
+  const cfg = loadConfig(), profile = activeProfile(cfg), slot = /^savegame\d+$/.test(profile.savegame) ? profile.savegame : listSlots(cfg)[0] || '';
+  let save = {};
+  if (slot) try {
+    const xml = fs.readFileSync(path.join(cfg.profilePath, slot, 'careerSavegame.xml'), 'utf8');
+    const value = (tag) => { const m = new RegExp(`<${tag}\\b[^>]*>([^<]*)<\\/${tag}>`, 'i').exec(xml); return m ? m[1].trim() : ''; };
+    save = { slot, name: value('savegameName'), map: value('mapTitle'), money: value('money'), loan: value('loan'), playTime: value('playTime') };
+  } catch { save = { slot }; }
+  return { profile: profile.name, farm: profile.farm || '', save, telemetry: companionTelemetry, updatedAt: Date.now() };
+}
+function companionUrls() {
+  if (!companionServer || !companionToken) return [];
+  const port = companionServer.address().port, addresses = [];
+  for (const list of Object.values(os.networkInterfaces())) for (const item of list || []) if (item.family === 'IPv4' && !item.internal) addresses.push(`http://${item.address}:${port}/c/${companionToken}`);
+  return addresses;
+}
+const COMPANION_HTML = `<!doctype html><html lang="de"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agri Nexus Companion</title><style>body{margin:0;background:#101710;color:#ecf1e8;font:16px system-ui;padding:22px}h1{font-size:22px}small{color:#aab5a5}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.card{background:#1b261c;border:1px solid #344235;border-radius:14px;padding:16px}.value{font-size:22px;font-weight:700;margin-top:8px;overflow-wrap:anywhere}.wide{grid-column:1/-1}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style><h1>Agri Nexus · Live-Begleiter</h1><small id="updated">Verbinde …</small><div class="grid" id="data"></div><script>const box=document.getElementById('data'),updated=document.getElementById('updated');async function refresh(){try{const r=await fetch(location.pathname+'/api',{cache:'no-store'}),d=await r.json(),s=d.save||{},t=d.telemetry||{},vals=[['Profil',d.profile],['Hof',d.farm||'–'],['Spielstand',s.name||s.slot||'–'],['Karte',s.map||t.map||'–'],['Kontostand',s.money||t.money||'–'],['Kredit',s.loan||t.loan||'–'],['Preise',t.prices],['Silostände',t.silos],['Lohnaufträge',t.contracts],['Produktionen',t.production],['RP-Kasse',t.farmBalance]];box.replaceChildren();for(const [k,v] of vals){const c=document.createElement('div'),l=document.createElement('small'),x=document.createElement('div');c.className='card';l.textContent=k;x.className='value';x.textContent=String(v??'–');c.append(l,x);box.append(c)}if(Object.keys(t).length){const c=document.createElement('div'),l=document.createElement('small'),p=document.createElement('pre');c.className='card wide';l.textContent='Telemetrie';p.textContent=JSON.stringify(t,null,2);c.append(l,p);box.append(c)}updated.textContent='Zuletzt aktualisiert: '+new Date(d.updatedAt).toLocaleTimeString()}catch{updated.textContent='Verbindung fehlgeschlagen'}}refresh();setInterval(refresh,4000)</script></html>`;
+ipcMain.handle('companion:start', async () => {
+  if (!companionServer) {
+    companionToken = crypto.randomBytes(24).toString('hex');
+    const prefix = `/c/${companionToken}`;
+    companionServer = http.createServer((req, res) => {
+      const pathname = new URL(req.url, 'http://localhost').pathname;
+      if (pathname === prefix && req.method === 'GET') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(COMPANION_HTML); return; }
+      if (pathname === `${prefix}/api` && req.method === 'GET') { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify(companionState())); return; }
+      if (pathname === `${prefix}/api/telemetry` && req.method === 'POST') {
+        let body = '';
+        req.on('data', (chunk) => { if (Buffer.byteLength(body) + chunk.length > 1024 * 1024) { res.writeHead(413); res.end(); req.destroy(); } else body += chunk.toString('utf8'); });
+        req.on('end', () => { try { const d = JSON.parse(body); if (!d || typeof d !== 'object' || Array.isArray(d)) throw new Error('JSON-Objekt erwartet.'); companionTelemetry = Object.fromEntries(Object.entries(d).slice(0, 100).map(([k, v]) => [String(k).slice(0, 80), typeof v === 'string' ? v.slice(0, 500) : v])); res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true}'); } catch (err) { if (!res.headersSent) { res.writeHead(400, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: err.message })); } } }); return;
+      }
+      res.writeHead(404, { 'content-type': 'text/plain' }); res.end('Not found');
+    });
+    try { await new Promise((resolve, reject) => { companionServer.once('error', reject); companionServer.listen(0, '0.0.0.0', resolve); }); companionServer.on('error', () => { companionServer = null; companionToken = ''; }); }
+    catch (err) { companionServer = null; companionToken = ''; return { ok: false, error: err.message }; }
+  }
+  return { ok: true, port: companionServer.address().port, urls: companionUrls() };
+});
+ipcMain.handle('companion:stop', async () => { const server = companionServer; companionServer = null; companionToken = ''; companionTelemetry = null; if (server) await new Promise((resolve) => server.close(resolve)); return true; });
+
+ipcMain.handle('rp:savegameSync', async (_e, url) => {
+  let parsed;
+  try { parsed = new URL(String(url)); } catch { return { ok: false, error: 'Ungültige Savegame-URL.' }; }
+  if (parsed.protocol !== 'https:') return { ok: false, error: 'Savegame-Sync akzeptiert nur HTTPS-Adressen.' };
+  try {
+    const result = await netlib.httpGet(parsed.toString(), { timeout: 20000, maxBytes: 16 * 1024 * 1024 });
+    if (result.status !== 200 || !/<careerSavegame\b/i.test(result.body)) return { ok: false, error: `Keine careerSavegame.xml erhalten (HTTP ${result.status || 'Fehler'}).` };
+    const cfg = loadConfig(), dir = path.join(cfg.profilePath, 'agri-nexus-admin'); fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'careerSavegame.xml');
+    if (fs.existsSync(file)) fs.copyFileSync(file, file + '.bak');
+    fs.writeFileSync(file, result.body, 'utf8');
+    return { ok: true, file, downloadedAt: Date.now(), bytes: Buffer.byteLength(result.body, 'utf8') };
+  } catch (err) { return { ok: false, error: err.message }; }
+});
+
+let discord = null, discordReady = false;
+async function updatePresence(details = 'Launcher geöffnet') {
+  if (!discordReady || !discord) return;
+  const cfg = loadConfig(), p = activeProfile(cfg);
+  let activeMods = 0;
+  let map = '';
+  const dir = resolveModsDir(cfg).dir;
+  try {
+    const selected = p.modMode === 'selection' ? new Set(p.modSelection.map((x) => x.toLowerCase())) : null;
+    activeMods = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => {
+      const valid = !/\.bak$/i.test(e.name) && (e.isDirectory() && fs.existsSync(path.join(dir, e.name, 'modDesc.xml')) || e.isFile() && /\.zip$/i.test(e.name));
+      const id = e.name.replace(/\.zip$/i, '').toLowerCase();
+      return valid && (!selected || selected.has(id));
+    }).length;
+  } catch { /* no mod directory yet */ }
+  try { if (p.savegame) map = xmlTag(fs.readFileSync(path.join(cfg.profilePath, p.savegame, 'careerSavegame.xml'), 'utf8'), 'mapTitle'); } catch { /* no save selected */ }
+  try { const current = await isGameRunning(); discord.setActivity({ details: current ? `Farming Simulator 25${map ? ' · ' + map : ' wird gespielt'}` : String(details).slice(0, 128), state: `${p.name}${map ? ' · ' + map : ''} · ${activeMods} aktive Mods`.slice(0, 128), largeImageKey: 'agri_nexus', largeImageText: 'Agri Nexus', instance: false }); } catch { /* Discord may be closed */ }
+}
+function startDiscordRPC() {
+  try {
+    RPC.register(DISCORD_APP_ID); discord = new RPC.Client({ transport: 'ipc' });
+    discord.on('ready', () => { discordReady = true; updatePresence(); });
+    discord.on('disconnected', () => { discordReady = false; });
+    discord.login({ clientId: DISCORD_APP_ID }).catch(() => { discordReady = false; });
+  } catch { discordReady = false; }
+}
 
 // Aktives Profil → Mod-Ordner in gameSettings.xml umstellen
 ipcMain.handle('profile:apply', async () => {
@@ -797,6 +1179,114 @@ ipcMain.handle('backup:delete', async (_e, file) => {
   }
 });
 
+// Safe, allow-listed scalar editor and XML health scan. Every edit first creates
+// a complete timestamped ZIP backup of the selected savegame slot.
+const SAVE_XML_FILES = ['careerSavegame.xml', 'environment.xml', 'fields.xml', 'farmland.xml', 'vehicles.xml', 'placeables.xml'];
+const NUMERIC_XML_VALUE = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/;
+function validateXml(text) {
+  const source = String(text).replace(/<!--[\s\S]*?-->/g, '').replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '').replace(/<\?[\s\S]*?\?>/g, '').replace(/<!DOCTYPE[^>]*>/gi, '');
+  const stack = [], tags = source.match(/<[^>]+>/g) || [];
+  for (const token of tags) {
+    if (/^<\s*!/.test(token)) continue;
+    const close = /^<\s*\/\s*([\w:.-]+)/.exec(token);
+    if (close) { if (stack.pop() !== close[1]) return `Unerwartetes Abschluss-Element </${close[1]}>`; continue; }
+    const open = /^<\s*([\w:.-]+)/.exec(token);
+    if (!open) return 'Ungültiges XML-Element gefunden.';
+    if (!/\/\s*>$/.test(token)) stack.push(open[1]);
+  }
+  return stack.length ? `Nicht geschlossenes Element <${stack[stack.length - 1]}>` : '';
+}
+function saveSlotDir(cfg, slot) {
+  if (!/^savegame\d+$/.test(String(slot))) return '';
+  const dir = path.join(cfg.profilePath, String(slot));
+  return inside(cfg.profilePath, dir) ? dir : '';
+}
+ipcMain.handle('save:inspect', (_e, slot) => {
+  const cfg = loadConfig(), dir = saveSlotDir(cfg, slot);
+  if (!dir || !fs.existsSync(dir)) return { ok: false, error: 'Savegame-Slot nicht gefunden.', fields: [], issues: [] };
+  const fields = [], issues = [];
+  for (const name of SAVE_XML_FILES) {
+    const file = path.join(dir, name);
+    if (!fs.existsSync(file)) continue;
+    try {
+      const st = fs.statSync(file);
+      if (st.size > 32 * 1024 * 1024) { issues.push({ file: name, issue: `Datei ist ungewöhnlich groß (${(st.size / 1024 / 1024).toFixed(1)} MiB).` }); continue; }
+      const xml = fs.readFileSync(file, 'utf8'), invalid = validateXml(xml);
+      if (invalid) issues.push({ file: name, issue: invalid });
+      const occurrences = new Map();
+      const re = /<([\w:.-]+)\b[^>]*>\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*<\/\1\s*>/g;
+      let match;
+      while ((match = re.exec(xml)) && fields.length < 800) {
+        const occurrence = occurrences.get(match[1]) || 0; occurrences.set(match[1], occurrence + 1);
+        fields.push({ file: name, tag: match[1], occurrence, value: match[2] });
+      }
+      if (name === 'vehicles.xml' && /<vehicle\b/i.test(xml) && !/<vehicles\b/i.test(xml)) issues.push({ file: name, issue: 'Fahrzeug-Einträge gefunden, aber kein <vehicles>-Wurzelelement. Datei manuell prüfen.' });
+    } catch (err) { issues.push({ file: name, issue: err.message }); }
+  }
+  return { ok: true, fields, issues };
+});
+ipcMain.handle('save:edit', async (_e, slot, name, tag, occurrence, value) => {
+  const cfg = loadConfig(), dir = saveSlotDir(cfg, slot);
+  if (!dir || !SAVE_XML_FILES.includes(String(name))) return { ok: false, error: 'Ungültiger Slot oder XML-Datei.' };
+  if (!/^[\w:.-]{1,80}$/.test(String(tag)) || !Number.isFinite(Number(value)) || !NUMERIC_XML_VALUE.test(String(value))) return { ok: false, error: 'Bitte einen gültigen numerischen Wert eingeben.' };
+  if (await isGameRunning()) return { ok: false, error: 'Das Spiel läuft. Bitte erst beenden.' };
+  const file = path.join(dir, name);
+  try {
+    const xml = fs.readFileSync(file, 'utf8'), targetOccurrence = Math.max(0, Number(occurrence) || 0);
+    const escapedTag = String(tag).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(<${escapedTag}\\b[^>]*>\\s*)([-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?)(\\s*<\\/${escapedTag}\\s*>)`, 'g');
+    let index = 0, found = false;
+    const next = xml.replace(re, (whole, open, old, close) => index++ === targetOccurrence ? (found = true, open + String(value) + close) : whole);
+    if (!found) return { ok: false, error: 'Das XML-Feld hat sich geändert. Bitte neu laden.' };
+    const backup = await createBackup(cfg, String(slot), 'vor-wiederherstellung');
+    fs.copyFileSync(file, file + '.agri-nexus.bak');
+    fs.writeFileSync(file, next, 'utf8');
+    return { ok: true, backup };
+  } catch (err) { return { ok: false, error: err.message }; }
+});
+
+const profileSnapshotDir = (kind) => path.join(app.getPath('userData'), 'profile-snapshots', kind);
+function safeProfileId(id) { return /^[A-Za-z0-9_-]{1,64}$/.test(String(id)) ? String(id) : ''; }
+ipcMain.handle('profile:snapshot:save', async (_e, kind, id, name) => {
+  const cfg = loadConfig(), profileId = safeProfileId(id), presetName = String(name || '').trim().slice(0, 50);
+  if (!profileId || !['inputBinding', 'graphics'].includes(kind)) return { ok: false, error: 'Ungültiges Profil.' };
+  if (kind === 'graphics' && !presetName) return { ok: false, error: 'Bitte einen Namen für das Grafik-Preset eingeben.' };
+  const source = path.join(cfg.profilePath, kind === 'inputBinding' ? 'inputBinding.xml' : 'gameSettings.xml');
+  if (!fs.existsSync(source)) return { ok: false, error: `${path.basename(source)} wurde nicht gefunden.` };
+  const dir = kind === 'graphics' ? path.join(profileSnapshotDir(kind), profileId) : profileSnapshotDir(kind); fs.mkdirSync(dir, { recursive: true });
+  const slug = presetName.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'preset';
+  const destination = path.join(dir, kind === 'graphics' ? `${slug}.xml` : `${profileId}.xml`);
+  try { fs.copyFileSync(source, destination); return { ok: true, file: destination, mtime: fs.statSync(destination).mtimeMs }; }
+  catch (err) { return { ok: false, error: err.message }; }
+});
+ipcMain.handle('profile:snapshot:apply', async (_e, kind, id, name) => {
+  const cfg = loadConfig(), profileId = safeProfileId(id);
+  if (!profileId || !['inputBinding', 'graphics'].includes(kind)) return { ok: false, error: 'Ungültiges Profil.' };
+  if (await isGameRunning()) return { ok: false, error: 'Das Spiel läuft. Bitte erst beenden.' };
+  const preset = String(name || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
+  const source = kind === 'graphics' ? path.join(profileSnapshotDir(kind), profileId, `${preset}.xml`) : path.join(profileSnapshotDir(kind), `${profileId}.xml`);
+  const destination = path.join(cfg.profilePath, kind === 'inputBinding' ? 'inputBinding.xml' : 'gameSettings.xml');
+  if (!fs.existsSync(source)) return { ok: false, error: 'Für dieses Profil wurde noch keine Sicherung gespeichert.' };
+  try {
+    if (!fs.existsSync(destination)) return { ok: false, error: `${path.basename(destination)} wurde nicht gefunden.` };
+    const savedOverride = kind === 'graphics' ? gameSettings.readOverride(cfg.profilePath) : null;
+    fs.copyFileSync(destination, destination + '.agri-nexus.bak');
+    fs.copyFileSync(source, destination);
+    if (kind === 'graphics') gameSettings.writeOverride(cfg.profilePath, cfg.modsPath || (savedOverride && savedOverride.active ? savedOverride.directory : null));
+    return { ok: true, backup: destination + '.agri-nexus.bak' };
+  } catch (err) { return { ok: false, error: err.message }; }
+});
+ipcMain.handle('profile:snapshot:info', (_e, kind, id) => {
+  const profileId = safeProfileId(id);
+  if (!profileId || !['inputBinding', 'graphics'].includes(kind)) return null;
+  const dir = kind === 'graphics' ? path.join(profileSnapshotDir(kind), profileId) : profileSnapshotDir(kind);
+  if (kind === 'graphics') {
+    try { return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith('.xml')).map((e) => { const file = path.join(dir, e.name), st = fs.statSync(file); return { name: path.basename(e.name, '.xml'), file, mtime: st.mtimeMs, size: st.size }; }); } catch { return []; }
+  }
+  const file = path.join(dir, `${profileId}.xml`);
+  try { const st = fs.statSync(file); return { file, mtime: st.mtimeMs, size: st.size }; } catch { return null; }
+});
+
 // ---------------------------------------------------------------------------
 // Spielstart
 // ---------------------------------------------------------------------------
@@ -863,13 +1353,16 @@ ipcMain.handle('game:launch', async () => {
   const result = await new Promise((resolve) => {
     let child;
     try {
+      startBootTracker(cfg);
       child = spawn(cfg.gamePath, args, { detached: true, stdio: 'ignore', cwd: path.dirname(cfg.gamePath) });
     } catch (err) {
+      if (bootTimer) { clearInterval(bootTimer); bootTimer = null; }
       return resolve({ ok: false, error: err.message });
     }
-    child.once('error', (err) => resolve({ ok: false, error: err.message }));
+    child.once('error', (err) => { if (bootTimer) { clearInterval(bootTimer); bootTimer = null; saveBootRun({ startedAt: Date.now(), durationMs: null, marker: err.message, profile: profile.name }); } resolve({ ok: false, error: err.message }); });
     child.once('spawn', () => {
       child.unref();
+      updatePresence('Farming Simulator 25 wird gespielt');
       resolve({ ok: true, args, notes });
     });
   });

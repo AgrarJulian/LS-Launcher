@@ -3,6 +3,7 @@
 const api = window.launcher;
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
+const q = (selector) => document.querySelector(selector);
 
 let cfg = null;
 let page = 'start';
@@ -109,6 +110,7 @@ const activeProfile = () => cfg.profiles.find((p) => p.id === cfg.activeProfile)
 
 async function persist() {
   cfg = await api.config.set(cfg);
+  return cfg;
 }
 
 function head(title, sub, actions = '') {
@@ -119,7 +121,7 @@ function emptyBox(title, text) {
   return `<div class="empty">${I.box}<b>${esc(title)}</b><span>${esc(text)}</span></div>`;
 }
 
-const sourceLabel = (s) => (s === 'gameSettings' ? 'aus der gameSettings.xml' : s === 'profile' ? 'vom Hof-Profil' : 'Spiel-Standard');
+const sourceLabel = (s) => (s === 'settings' ? 'aus den Einstellungen' : s === 'gameSettings' ? 'aus der gameSettings.xml' : s === 'profile' ? 'vom Hof-Profil' : 'Spiel-Standard');
 
 async function activateProfile(id) {
   cfg.activeProfile = id;
@@ -137,7 +139,40 @@ function clearTimers() {
 function iconEl(m, cls = 'mod-icon') {
   if (m.icon) return `<img class="${cls}" src="${m.icon}" alt="">`;
   const h = hueOf(m.id);
-  return `<div class="${cls} ph" style="background:linear-gradient(135deg,hsl(${h} 45% 28%),hsl(${(h + 40) % 360} 50% 18%))">${esc(initials(m.title || m.id))}</div>`;
+  return `<div class="${cls} ph" data-icon-file="${esc(m.file)}" style="background:linear-gradient(135deg,hsl(${h} 45% 28%),hsl(${(h + 40) % 360} 50% 18%))">${esc(initials(m.title || m.id))}</div>`;
+}
+
+let modIconObserver = null;
+const modIconRequests = new Map();
+function requestModIcon(file) {
+  if (!modIconRequests.has(file)) {
+    const request = api.mods.icon(file).finally(() => modIconRequests.delete(file));
+    modIconRequests.set(file, request);
+  }
+  return modIconRequests.get(file);
+}
+function loadModIcons(root = document) {
+  if (modIconObserver) modIconObserver.disconnect();
+  if (!('IntersectionObserver' in window)) return;
+  modIconObserver = new IntersectionObserver((entries, observer) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const placeholder = entry.target, file = placeholder.dataset.iconFile;
+      observer.unobserve(placeholder);
+      requestModIcon(file).then((src) => {
+        if (!src) return;
+        const mod = M.items.find((item) => item.file === file);
+        if (mod) mod.icon = src;
+        if (!placeholder.isConnected) return;
+        const image = document.createElement('img');
+        image.className = placeholder.className.replace(/\sph\b/, '');
+        image.src = src;
+        image.alt = '';
+        placeholder.replaceWith(image);
+      });
+    }
+  }, { root: document.querySelector('.content'), rootMargin: '120px' });
+  root.querySelectorAll('[data-icon-file]').forEach((node) => modIconObserver.observe(node));
 }
 
 const pages = {};
@@ -168,7 +203,7 @@ pages.start = {
                 <p>${gameOk ? '<span class="chip ok"><i></i>Spiel gefunden</span>' : '<span class="chip bad"><i></i>Spiel-Pfad fehlt</span>'}</p>
               </div>
             </div>
-            <button class="btn primary launch" id="btn-launch">${I.play}LS25 STARTEN</button>
+            <button class="btn primary launch" id="btn-launch">${I.play}SPIEL STARTEN</button>
             ${gameOk ? '' : '<p class="note" style="margin:0">Lege den Pfad zur FarmingSimulator2025.exe unter <a data-go="settings">Einstellungen</a> fest.</p>'}
           </div>
           <div class="grid g-3">
@@ -450,7 +485,16 @@ pages.profiles = {
 // Mods & Assets (Mod-Regal)
 // ---------------------------------------------------------------------------
 
-const M = { items: [], dir: '', source: '', file: '', filter: 'all', sort: 'name', q: '', conflicts: null, conflictMap: {}, hub: {}, hubRun: null, scroll: 0 };
+const M = { items: [], dir: '', source: '', file: '', filter: 'all', type: 'all', sort: 'name', q: '', limit: 80, conflicts: null, conflictMap: {}, hub: {}, hubRun: null, scroll: 0 };
+
+function modType(m) {
+  const explicit = String(m.category || '').toLowerCase();
+  const text = `${m.id} ${m.title} ${m.description || ''} ${explicit}`.toLowerCase();
+  if (/\b(map|maps|karte|karten|region|landscape|landkreis)\b/.test(text) || /\bmap\b/.test(explicit)) return 'maps';
+  if (/\b(tractor|tractors|traktor|traktoren|schlepper)\b/.test(text) || /\b(tractors|tractor)\b/.test(explicit) || /\b(fendt|john deere|deutz fahr|new holland|case ih|massey ferguson|valtra|steyr|zetor|ursus)\b/.test(text)) return 'tractors';
+  if (/\b(implement|implements|anbaugerät|anbaugeraet|anbaugeräte|anbaugeraete|pflugs?|plows?|grubber|cultivators?|sämaschinen?|seeders?|sprayers?|spritzen?|mowers?|mäher|harrows?|eggen|balers?|pressen?|trailers?|anhänger|anhaenger)\b/.test(text) || /\b(implements|tools)\b/.test(explicit)) return 'implements';
+  return 'other';
+}
 
 function conflictFor(id) {
   return M.conflictMap[id] || [];
@@ -518,6 +562,7 @@ function modCard(m) {
 function filteredMods() {
   const q = M.q.trim().toLowerCase();
   let list = M.items.filter((m) => !q || (m.title + ' ' + m.id + ' ' + m.author).toLowerCase().includes(q));
+  if (M.type !== 'all') list = list.filter((m) => modType(m) === M.type);
   list = list.filter((m) => {
     const p = problems(m);
     switch (M.filter) {
@@ -530,12 +575,13 @@ function filteredMods() {
       default: return true;
     }
   });
+  const issueCounts = new Map(list.map((m) => [m, problems(m)]));
   const by = {
     name: (a, b) => a.title.localeCompare(b.title, 'de', { sensitivity: 'base' }),
     author: (a, b) => (a.author || '~').localeCompare(b.author || '~', 'de', { sensitivity: 'base' }) || by.name(a, b),
     size: (a, b) => b.size - a.size,
     date: (a, b) => b.mtime - a.mtime,
-    errors: (a, b) => problems(b).errCount - problems(a).errCount || problems(b).warnCount - problems(a).warnCount || by.name(a, b)
+    errors: (a, b) => issueCounts.get(b).errCount - issueCounts.get(a).errCount || issueCounts.get(b).warnCount - issueCounts.get(a).warnCount || by.name(a, b)
   };
   return list.sort(by[M.sort] || by.name);
 }
@@ -580,6 +626,13 @@ function modDetails(file) {
     true
   );
   md.el.querySelector('[data-close]').onclick = md.close;
+  const detailPlaceholder = md.el.querySelector('[data-icon-file]');
+  if (detailPlaceholder) requestModIcon(m.file).then((src) => {
+    if (!src || !detailPlaceholder.isConnected) return;
+    m.icon = src;
+    const image = document.createElement('img'); image.className = detailPlaceholder.className.replace(/\sph\b/, ''); image.src = src; image.alt = '';
+    detailPlaceholder.replaceWith(image);
+  });
   md.el.querySelector('[data-reveal]').onclick = () => api.mods.reveal(m.file);
   md.el.querySelector('[data-toggle-d]').onclick = async () => {
     md.close();
@@ -627,18 +680,22 @@ function drawSummary() {
   const err = M.items.filter((m) => problems(m).errCount).length;
   const warn = M.items.filter((m) => !problems(m).errCount && problems(m).warnCount).length;
   const upd = M.items.filter((m) => M.hub[m.id] && M.hub[m.id].status === 'update').length;
+  const totalSize = M.items.reduce((a, b) => a + b.size, 0);
+  const oversized = M.items.filter((m) => m.size > 512 * 1024 * 1024).length;
   el.innerHTML = `<span class="chip"><i></i>${all} Mods</span><span class="chip ok"><i></i>${on} aktiv</span>${all - on ? `<span class="chip mute"><i></i>${all - on} deaktiviert</span>` : ''}
     ${err ? `<span class="chip bad"><i></i>${err} mit Fehlern</span>` : ''}${warn ? `<span class="chip warn"><i></i>${warn} mit Warnungen</span>` : ''}${upd ? `<span class="chip warn"><i></i>${upd} Update${upd > 1 ? 's' : ''}</span>` : ''}
-    <span class="chip">${fmtSize(M.items.reduce((a, b) => a + b.size, 0))}</span>`;
+    <span class="chip ${totalSize > 20 * 1024 * 1024 * 1024 || oversized ? 'warn' : ''}" title="${oversized} Datei(en) größer als 512 MB">${fmtSize(totalSize)} Mods gesamt${oversized ? ` · ${oversized} sehr groß` : ''}</span>`;
 }
 
 function drawGrid() {
   const el = document.getElementById('m-grid');
   if (!el) return;
   const list = filteredMods();
+  const visible = list.slice(0, M.limit);
   el.innerHTML = list.length
-    ? `<div class="mod-grid">${list.map(modCard).join('')}</div>`
+    ? `<div class="mod-grid">${visible.map(modCard).join('')}</div><div class="mod-paging"><span class="note">${visible.length} von ${list.length} Mods angezeigt</span>${visible.length < list.length ? '<button class="btn" id="m-more">Mehr Mods laden</button>' : ''}</div>`
     : `<div class="card">${emptyBox('Keine Mods gefunden', M.q || M.filter !== 'all' ? 'Keine Treffer für Suche/Filter.' : 'Der Mod-Ordner ist leer. Ziehe .zip-Dateien in dieses Fenster, um Mods zu installieren.')}</div>`;
+  el.querySelector('#m-more')?.addEventListener('click', () => { M.limit += 80; drawGrid(); });
   el.querySelectorAll('[data-open]').forEach((c) => {
     c.onclick = (e) => {
       if (e.target.closest('[data-stop]')) return;
@@ -648,6 +705,7 @@ function drawGrid() {
   el.querySelectorAll('[data-toggle]').forEach((cb) => {
     cb.onchange = () => toggleMod(cb.dataset.toggle);
   });
+  loadModIcons(document);
 }
 
 function drawConflicts() {
@@ -746,6 +804,103 @@ function drawBanner() {
     ${M.ok ? '' : `<span class="chip bad"><i></i>${esc(M.error || 'nicht gefunden')}</span>`}`;
 }
 
+let syncPeer = null, syncConn = null, syncRemote = [], syncLocal = [], syncBusy = false, syncQueue = [];
+let syncProgressOff = null;
+function setupP2PSync() {
+  const status = document.getElementById('sync-status'), compare = document.getElementById('sync-compare');
+  const setStatus = (s) => { if (status) status.textContent = s; };
+  const setProgress = (n) => { const bar = document.getElementById('sync-progress'); if (bar) bar.style.width = `${Math.max(0, Math.min(100, n))}%`; };
+  if (syncProgressOff) syncProgressOff();
+  syncProgressOff = api.sync.onProgress((p) => {
+    if (p.complete) { setProgress(100); setStatus(`SHA-256-Vergleich abgeschlossen · ${p.total} Mods`); return; }
+    setStatus(`SHA-256 ${p.done}/${p.total} Mods · ${fmtSize(p.bytesDone)} / ${fmtSize(p.totalBytes)}${p.name ? ` · ${p.name}` : ''}`);
+    setProgress(p.totalBytes ? p.bytesDone / p.totalBytes * 100 : 0);
+  });
+  const connect = (conn, hosting) => {
+    syncConn = conn;
+    conn.on('open', async () => {
+      setStatus('Verbunden · vergleiche SHA-256 …');
+      const local = await api.sync.manifest();
+      syncLocal = local.items;
+      conn.send({ type: 'manifest', items: local.items });
+      if (hosting) setStatus('Sitzung bereit · Raumcode: ' + syncPeer.id.replace(/^ANX/i, ''));
+    });
+    conn.on('data', async (msg) => {
+      try {
+        if (msg.type === 'manifest') {
+          syncRemote = msg.items || [];
+          const local = await api.sync.manifest(), map = new Map(local.items.map((x) => [x.name.toLowerCase(), x]));
+          const missing = syncRemote.filter((x) => !map.has(x.name.toLowerCase()) || map.get(x.name.toLowerCase()).sha256 !== x.sha256);
+          compare.innerHTML = `<div class="toolbar"><p>${missing.length} fehlende oder abweichende ZIP-Mods · ${syncRemote.length} im Peer-Ordner</p>${missing.length ? '<button class="btn primary" id="sync-all">Alle fehlenden Mods synchronisieren</button>' : ''}</div>${missing.map((x) => `<div class="status-row"><span class="grow">${esc(x.name)} · ${fmtSize(x.size)}</span><button class="btn sm" data-sync-file="${esc(x.name)}">Nur diese Mod</button></div>`).join('') || '<p>Alle ZIP-Mods stimmen überein.</p>'}`;
+          const beginQueue = (names) => { syncQueue = names.slice(); setProgress(0); if (syncQueue.length) { const name = syncQueue.shift(); conn.send({ type: 'request', name }); setStatus(`Fordere ${name} an …`); } };
+          compare.querySelector('#sync-all')?.addEventListener('click', () => beginQueue(missing.map((x) => x.name)));
+          compare.querySelectorAll('[data-sync-file]').forEach((b) => b.onclick = () => beginQueue([b.dataset.syncFile]));
+          setStatus('Vergleich abgeschlossen.');
+        } else if (msg.type === 'request') {
+          const meta = syncLocal.find((x) => x.name === msg.name); if (!meta) return;
+          conn.send({ type: 'file-start', name: meta.name, size: meta.size });
+          for (let offset = 0; offset < meta.size; offset += 48 * 1024) {
+            const data = await api.sync.read(meta.name, offset, Math.min(48 * 1024, meta.size - offset));
+            conn.send({ type: 'file-chunk', data, sent: Math.min(meta.size, offset + 48 * 1024), size: meta.size });
+            setProgress((offset + 48 * 1024) / meta.size * 100); setStatus(`Sende ${meta.name}: ${Math.min(100, Math.round((offset + 48 * 1024) / meta.size * 100))}%`);
+            while (conn.dataChannel && conn.dataChannel.bufferedAmount > 1024 * 1024) await new Promise((r) => setTimeout(r, 50));
+          }
+          conn.send({ type: 'file-end' }); setStatus('Datei gesendet.');
+        } else if (msg.type === 'profile-request') {
+          const pkg = await api.sync.profile();
+          conn.send({ type: 'profile-start', name: pkg.name, size: pkg.size, token: pkg.token });
+          for (let offset = 0; offset < pkg.size; offset += 48 * 1024) {
+            const data = await api.sync.read('profile:' + pkg.token, offset, Math.min(48 * 1024, pkg.size - offset));
+            conn.send({ type: 'profile-chunk', data });
+            setProgress((offset + 48 * 1024) / pkg.size * 100); setStatus(`Sende Profil: ${Math.min(100, Math.round((offset + 48 * 1024) / pkg.size * 100))}%`);
+            while (conn.dataChannel && conn.dataChannel.bufferedAmount > 1024 * 1024) await new Promise((r) => setTimeout(r, 50));
+          }
+          conn.send({ type: 'profile-end' });
+        } else if (msg.type === 'profile-start') {
+          syncBusy = true; window._syncToken = await api.sync.begin(msg.name, msg.size); window._syncName = msg.name; window._syncSize = msg.size; window._syncReceived = 0;
+        } else if (msg.type === 'profile-chunk') {
+          window._syncReceived = await api.sync.chunk(window._syncToken, msg.data);
+          setProgress(window._syncReceived / window._syncSize * 100);
+          setStatus(`Empfange Profil: ${Math.min(100, Math.round(window._syncReceived / window._syncSize * 100))}%`);
+        } else if (msg.type === 'profile-end') {
+          const result = await api.sync.finish(window._syncToken); syncBusy = false;
+          if (result.ok && result.profile) cfg = await api.config.get();
+          setStatus(result.ok ? `Profil empfangen: ${result.file}` : result.error); if (result.ok) await loadMods();
+        } else if (msg.type === 'file-start') {
+          syncBusy = true; window._syncToken = await api.sync.begin(msg.name, msg.size); window._syncName = msg.name; window._syncSize = msg.size; window._syncReceived = 0;
+        } else if (msg.type === 'file-chunk') {
+          window._syncReceived = await api.sync.chunk(window._syncToken, msg.data);
+          setProgress(window._syncReceived / window._syncSize * 100);
+          setStatus(`Empfange ${window._syncName}: ${Math.min(100, Math.round(window._syncReceived / window._syncSize * 100))}%`);
+        } else if (msg.type === 'file-end') {
+          const result = await api.sync.finish(window._syncToken); syncBusy = false;
+          if (!result.ok) { syncQueue = []; setStatus(result.error); }
+          else if (syncQueue.length) { const name = syncQueue.shift(); conn.send({ type: 'request', name }); setStatus(`Empfangen: ${result.file} · fordere ${name} an …`); }
+          else { setStatus(`Synchronisierung abgeschlossen: ${result.file}`); await loadMods(); }
+        }
+      } catch (err) { syncBusy = false; setStatus('Sync-Fehler: ' + err.message); }
+    });
+    conn.on('close', () => setStatus('Verbindung geschlossen.'));
+    conn.on('error', (e) => setStatus('Verbindungsfehler: ' + e.message));
+  };
+  document.getElementById('sync-host').onclick = () => {
+    if (typeof Peer === 'undefined') return setStatus('PeerJS konnte nicht geladen werden.');
+    const code = Math.random().toString(36).slice(2, 8).toUpperCase(); syncPeer = new Peer('ANX' + code); setStatus('Erstelle Sitzung …');
+    syncPeer.on('open', () => { document.getElementById('sync-code').value = code; setStatus('Raumcode: ' + code + ' · warte auf Peer'); });
+    syncPeer.on('connection', (c) => connect(c, true)); syncPeer.on('error', (e) => setStatus('PeerJS: ' + e.type));
+  };
+  document.getElementById('sync-join').onclick = () => {
+    if (typeof Peer === 'undefined') return setStatus('PeerJS konnte nicht geladen werden.');
+    const code = document.getElementById('sync-code').value.replace(/[^a-z0-9]/gi, '').toUpperCase();
+    if (code.length !== 6) return setStatus('Bitte einen sechsstelligen Raumcode eingeben.');
+    syncPeer = new Peer(); setStatus('Verbinde …'); syncPeer.on('open', () => connect(syncPeer.connect('ANX' + code, { reliable: true }))); syncPeer.on('error', (e) => setStatus('PeerJS: ' + e.type));
+  };
+  document.getElementById('sync-profile').onclick = () => {
+    if (!syncConn || !syncConn.open) return setStatus('Erst einer aktiven Sync-Sitzung beitreten.');
+    syncConn.send({ type: 'profile-request' }); setStatus('Profilpaket wird vorbereitet …');
+  };
+}
+
 pages.mods = {
   title: 'Mods & Assets',
   icon: I.mods,
@@ -757,29 +912,34 @@ pages.mods = {
         `<button class="btn" id="m-conf">${I.shield}Konflikte prüfen</button><button class="btn" id="m-hubbtn">${I.cloud}ModHub prüfen</button><button class="btn" id="m-open">${I.folder}Ordner</button><button class="btn" id="m-ref">${I.refresh}</button>`
       ) +
       `<div class="banner" id="m-banner"></div>
+       <div class="card" style="margin-bottom:16px"><h2>P2P Mod- &amp; Profil-Sync</h2><p class="note" style="margin:4px 0 12px">ZIP-Mods abgleichen oder das aktive Profil mit aktivem Mod-Set und zugeordnetem Savegame direkt übertragen. WebRTC wird über PeerJS vermittelt.</p><div class="toolbar"><button class="btn primary" id="sync-host">Host Sync Session</button><input class="input mono" id="sync-code" placeholder="Raumcode"><button class="btn" id="sync-join">Join Sync Session</button><button class="btn" id="sync-profile">Profil senden</button><span id="sync-status" class="note" style="margin:0"></span></div><div class="progress"><i id="sync-progress" style="width:0%"></i></div><div id="sync-compare"></div></div>
        <div id="m-hub"></div><div id="m-conflicts"></div>
        <div class="chips" id="m-chips"></div>
        <div class="toolbar">
          <input class="input" id="m-search" placeholder="Mods durchsuchen …" value="${esc(M.q)}">
+         <select class="input" id="m-type"><option value="all">Alle Typen</option><option value="maps">Maps</option><option value="tractors">Traktoren</option><option value="implements">Anbaugeräte</option><option value="other">Sonstige</option></select>
          <select class="input" id="m-filter">
            <option value="all">Alle</option><option value="on">Aktiv</option><option value="off">Deaktiviert</option>
            <option value="err">Mit Fehlern</option><option value="warn">Mit Warnungen</option><option value="update">Update verfügbar</option><option value="conflict">Mit Konflikten</option></select>
          <select class="input" id="m-sort">
-           <option value="name">Sortiert nach Name</option><option value="author">nach Modder</option><option value="errors">nach Fehlern</option><option value="size">nach Größe</option><option value="date">nach Datum</option></select>
+           <option value="name">Sortiert nach Name</option><option value="author">nach Modder</option><option value="errors">Meiste Fehler zuerst</option><option value="size">nach Größe</option><option value="date">nach Datum</option></select>
          <span class="grow"></span><span class="note" style="margin:0">Tipp: .zip-Dateien einfach ins Fenster ziehen</span>
        </div>
        <div id="m-grid"><div class="card"><span class="spin"></span></div></div>`;
 
     document.getElementById('m-filter').value = M.filter;
+    document.getElementById('m-type').value = M.type;
     document.getElementById('m-sort').value = M.sort;
-    document.getElementById('m-search').oninput = (e) => ((M.q = e.target.value), drawGrid());
-    document.getElementById('m-filter').onchange = (e) => ((M.filter = e.target.value), drawGrid());
-    document.getElementById('m-sort').onchange = (e) => ((M.sort = e.target.value), drawGrid());
+    document.getElementById('m-search').oninput = (e) => ((M.q = e.target.value), (M.limit = 80), drawGrid());
+    document.getElementById('m-type').onchange = (e) => ((M.type = e.target.value), (M.limit = 80), drawGrid());
+    document.getElementById('m-filter').onchange = (e) => ((M.filter = e.target.value), (M.limit = 80), drawGrid());
+    document.getElementById('m-sort').onchange = (e) => ((M.sort = e.target.value), (M.limit = 80), drawGrid());
     document.getElementById('m-open').onclick = async () => {
       const o = await api.openFolder('mods');
       if (!o.ok) toast(o.error, true);
     };
     document.getElementById('m-ref').onclick = () => loadMods();
+    setupP2PSync();
     document.getElementById('m-hubbtn').onclick = () => runHub();
     document.getElementById('m-conf').onclick = async (e) => {
       const btn = e.currentTarget;
@@ -1358,6 +1518,7 @@ pages.settings = {
         <div class="card"><h2>Pfade</h2>
           ${row('st-game', 'Spiel (FarmingSimulator2025.exe)', 'Wird beim Start ausgeführt.', cfg.gamePath, 'file', '<button class="btn" id="st-detect">Erkennen</button>')}
           ${row('st-profile', 'Profil-Ordner', 'Enthält gameSettings.xml, savegame-Ordner und die Log-Datei – meist Dokumente\\My Games\\FarmingSimulator2025.', cfg.profilePath, 'dir')}
+          ${row('st-mods', 'Mods-Ordner', 'Wird gespeichert und als modsDirectoryOverride in gameSettings.xml eingetragen.', cfg.modsPath || '', 'dir')}
           ${row('st-backup', 'Backup-Ordner', 'Hier werden die ZIP-Sicherungen gespeichert.', cfg.backupPath, 'dir')}
           ${row('st-log', 'Log-Datei (optional)', 'Leer lassen für automatische Suche (log.txt bzw. game.log.txt im Profil-Ordner).', cfg.logPath, 'log')}
         </div>
@@ -1367,6 +1528,8 @@ pages.settings = {
           <p class="note">Der Launcher liest den Mod-Ordner aus dem Eintrag <span class="mono">modsDirectoryOverride</span> der gameSettings.xml. Ist dort nichts aktiv, wird der Ordner „mods“ im Profil-Ordner verwendet.</p>
         </div>
         <div class="card"><h2>Verhalten</h2>
+          <div class="setting"><div><b>Ressourcenschonender Mod-Abgleich</b><small>Begrenzt den SHA-256-Scan auf etwa 24 MiB/s und merkt sich Prüfsummen unveränderter ZIP-Dateien.</small></div>
+            <label class="switch"><input type="checkbox" id="st-lowperf" ${cfg.lowPerformanceMode !== false ? 'checked' : ''}><span></span></label></div>
           <div class="setting"><div><b>Launcher nach dem Spielstart schließen</b><small>Beendet den Launcher, sobald das Spiel läuft.</small></div>
             <label class="switch"><input type="checkbox" id="st-close" ${cfg.closeOnLaunch ? 'checked' : ''}><span></span></label></div>
           <div class="setting"><div><b>Automatisches Backup vor jedem Start</b><small>Sichert vor dem Spielstart die Spielstände.</small></div>
@@ -1393,14 +1556,16 @@ pages.settings = {
     document.getElementById('st-save').onclick = async () => {
       cfg.gamePath = document.getElementById('st-game').value.trim();
       cfg.profilePath = document.getElementById('st-profile').value.trim();
+      cfg.modsPath = document.getElementById('st-mods').value.trim();
       cfg.backupPath = document.getElementById('st-backup').value.trim();
       cfg.logPath = document.getElementById('st-log').value.trim();
       cfg.closeOnLaunch = document.getElementById('st-close').checked;
       cfg.autoBackup = document.getElementById('st-auto').checked;
+      cfg.lowPerformanceMode = document.getElementById('st-lowperf').checked;
       cfg.autoBackupKeep = parseInt(document.getElementById('st-keep').value, 10) || 10;
-      await persist();
+      const saved = await persist();
       L.sig = '';
-      toast('Einstellungen gespeichert.');
+      toast(saved && saved.settingsError ? 'Einstellungen gespeichert, aber gameSettings.xml: ' + saved.settingsError : 'Einstellungen gespeichert.');
       pages.settings.render();
     };
   }
@@ -1417,7 +1582,7 @@ pages.about = {
     const link = (u) => `<a data-ext="https://${u}">${u}</a>`;
     view.innerHTML = `<div class="card about">
       <div class="about-head"><img src="../assets/icon.png" alt="">
-        <div><h2>LS25 Launcher v1.0.0</h2><p>Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25</p></div></div>
+        <div><h2>Agri Nexus v1.0.0-beta</h2><p>Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25</p></div></div>
       <hr>
       <section><h3>Projekt &amp; Community</h3>
         <ul>
@@ -1429,11 +1594,319 @@ pages.about = {
         <p>Dieses Programm ist freie Software und steht unter der MIT-Lizenz.<br>Die Software wird "wie gesehen" (AS IS) zur Verfügung gestellt, ohne jegliche ausdrückliche oder stillschweigende Gewährleistung.</p>
         <p>Der Entwickler übernimmt keine Haftung für etwaige Schäden, Datenverlust oder beschädigte Spielstände/Mods, die durch die Nutzung dieser Software entstehen. Die Nutzung erfolgt auf eigene Gefahr.</p></section>
       <section><h3>Rechtlicher Hinweis</h3>
-        <p>LS25 Launcher ist ein inoffizielles Community-Projekt und steht in keinerlei Verbindung mit der GIANTS Software GmbH. "Landwirtschafts-Simulator" und "GIANTS Software" sind eingetragene Marken der GIANTS Software GmbH.</p></section>
+        <p>Agri Nexus ist ein inoffizielles Community-Projekt und steht in keinerlei Verbindung mit der GIANTS Software GmbH. "Landwirtschafts-Simulator" und "GIANTS Software" sind eingetragene Marken der GIANTS Software GmbH.</p></section>
       <section style="margin-bottom:0"><ul><li>Datenschutzbestimmungen: ${link('github.com/AgrarJulian/LS-Launcher/blob/main/PRIVACY.md')}</li></ul></section>
     </div>`;
   }
 };
+
+let companionLinks = [], companionEnabled = false;
+pages.companion = {
+  title: 'Live & Werkstatt', icon: I.gear,
+  async render() {
+    const saves = await api.saves.list(), slots = saves.items || [], profile = activeProfile();
+    let slot = pages.companion.slot || profile.savegame || slots[0]?.slot || '';
+    if (slot && !slots.some((s) => s.slot === slot)) slot = slots[0]?.slot || '';
+    const editor = slot ? await api.saveTools.inspect(slot) : { ok: false, error: 'Kein Spielstand gefunden.', fields: [], issues: [] };
+    const [binding, graphics, bootRuns] = await Promise.all([api.profileSnapshots.info('inputBinding', profile.id), api.profileSnapshots.info('graphics', profile.id), api.performance.bootRuns()]);
+    view.innerHTML = head('Live-Begleiter & Werkstatt', 'Second Screen, Savegame-Werkzeuge, Profil-Sicherungen und Mod-Analyse.') +
+      `<div class="stack">
+        <div class="card"><h2>Live-Begleiter · lokales WLAN</h2><p class="note">Zeigt Spielstand, Karte und Kontostand. Weitere Silos, Aufträge und Produktionen benötigen ein Telemetrie-Mod, das Daten an den eingeblendeten /api/telemetry-Endpunkt sendet.</p><div class="toolbar"><button class="btn primary" id="comp-start">${companionEnabled ? 'Link aktualisieren' : 'Companion starten'}</button><button class="btn" id="comp-stop" ${companionEnabled ? '' : 'disabled'}>Beenden</button></div>${companionLinks.map((u) => `<div class="path-row"><input class="input mono" readonly value="${esc(u)}"><button class="btn" data-comp-copy="${esc(u)}">Link kopieren</button></div><small>Telemetrie-POST: <span class="mono">${esc(u)}/api/telemetry</span></small>`).join('') || '<span class="note">Server ist aus.</span>'}</div>
+        <div class="card"><h2>Dev-Makro-Deck</h2><p class="note">Bei aktivem Dev Mode kopieren die Tasten den Befehl in die Zwischenablage. Im Spiel Konsole öffnen und einfügen.</p><div class="toolbar">${[['1','gsPlayerFlightMode'],['2','gsMoneyAdd'],['3','gsTimeSet'],['4','gsToggleHUD']].map(([n,c]) => `<button class="btn" data-macro="${c}" ${profile.devMode ? '' : 'disabled'}>Alt+${n} · ${c}</button>`).join('')}</div><small>Dev Mode ${profile.devMode ? 'aktiv' : 'ausgeschaltet'} für ${esc(profile.name)}.</small></div>
+        <div class="card"><h2>Savegame-Editor &amp; Diagnose</h2><p class="note">Vor Änderungen wird ein vollständiges ZIP-Backup erstellt. Nur numerische Felder in ausgewählten XML-Dateien; Spiel muss beendet sein.</p><div class="toolbar"><select class="input" id="save-slot">${slots.map((s) => `<option value="${esc(s.slot)}" ${s.slot === slot ? 'selected' : ''}>${esc(s.slot)} · ${esc(s.name)}${s.map ? ' · ' + esc(s.map) : ''}</option>`).join('')}</select><button class="btn" id="save-refresh">Neu einlesen</button></div>${editor.ok ? `<div class="form-row"><div class="field"><label>XML-Feld</label><select class="input" id="save-field">${editor.fields.map((f, i) => `<option value="${i}">${esc(f.file)} · &lt;${esc(f.tag)}&gt;${f.occurrence ? ` [${f.occurrence + 1}]` : ''} = ${esc(f.value)}</option>`).join('')}</select></div><div class="field"><label>Neuer Wert</label><input class="input" id="save-value" inputmode="decimal"></div></div><button class="btn primary" id="save-apply" ${editor.fields.length ? '' : 'disabled'}>Mit Vorher-Backup ändern</button>` : `<span class="note">${esc(editor.error || 'Keine editierbaren numerischen Felder gefunden.')}</span>`}<div class="tool-report">${editor.issues?.length ? `<b>Prüfhinweise</b>${editor.issues.map((x) => `<div class="status-row"><span>${esc(x.file)} · ${esc(x.issue)}</span></div>`).join('')}` : '<span class="chip ok">Keine XML-Strukturfehler gefunden</span>'}</div><p class="note">Cleanup meldet strukturelle Auffälligkeiten. Verwaiste Ballen und Helfer-Aufträge werden nicht automatisch gelöscht, weil es dafür keine sichere allgemeine Reparaturregel gibt.</p></div>
+        <div class="card"><h2>Controller- &amp; Grafikprofile</h2><p class="note">Sichere den aktuellen Stand pro Launcher-Profil, nachdem du die gewünschte Belegung oder Grafik im Spiel eingestellt hast. Vor Wiederherstellung wird die aktuelle XML-Datei als .agri-nexus.bak gesichert.</p><div class="setting"><div><b>inputBinding.xml · ${binding ? 'gesichert ' + fmtDate(binding.mtime) : 'noch kein Snapshot'}</b></div><span class="toolbar"><button class="btn sm" id="binding-save">Stand sichern</button><button class="btn sm" id="binding-apply" ${binding ? '' : 'disabled'}>Wiederherstellen</button></span></div><div class="setting"><div><b>gameSettings.xml · ${graphics.length ? graphics.length + ' Preset(s)' : 'noch keine Presets'}</b><small>Stelle Grafik im Spiel ein und sichere mehrere Presets, z. B. „Ultra“, „FPS-Boost“ oder „Screenshot“.</small></div><span class="toolbar"><select class="input" id="graphics-preset" ${graphics.length ? '' : 'disabled'}>${graphics.map((x) => `<option value="${esc(x.name)}">${esc(x.name)} · ${fmtDate(x.mtime)}</option>`).join('') || '<option>Keine Presets</option>'}</select><button class="btn sm" id="graphics-save">Als Preset sichern</button><button class="btn sm" id="graphics-apply" ${graphics.length ? '' : 'disabled'}>Preset anwenden</button></span></div></div>
+        <div class="card"><h2>Mod-Leistung, Ladezeit &amp; Modpack</h2><p class="note">Der Ladezeit-Tracker sucht nach Ladeabschluss-Markern in log.txt; je nach Spielversion werden nicht immer passende Marker geschrieben. Der Bloat-Scan zeigt Dateigrößen, keine gemessenen FPS oder VRAM-Werte.</p><div class="toolbar"><button class="btn" id="perf-scan">Mod-Bloat scannen</button><button class="btn" id="boot-refresh">Ladezeiten aktualisieren</button><button class="btn primary" id="modpack-export">Aktives Profil als Modpack-Manifest exportieren</button></div><div class="tool-report">${bootRuns.length ? `<b>Letzte Starts</b>${bootRuns.slice(0,5).map((x) => `<div class="status-row"><span class="grow">${fmtDate(x.startedAt)} · ${esc(x.profile || '')}</span><span>${x.durationMs == null ? esc(x.marker) : `${Math.floor(x.durationMs / 60000)}:${String(Math.floor(x.durationMs / 1000) % 60).padStart(2,'0')} min · ${esc(x.marker)}`}</span></div>`).join('')}` : '<span class="note">Noch keine Ladezeitmessung vorhanden. Starte das Spiel über Agri Nexus und prüfe später erneut.</span>'}</div><div id="perf-report" class="tool-report"></div></div>
+        <div class="card"><h2>Discord Rich Presence</h2><p class="note">Zeigt Spielstatus, aktives Profil, Karte und aktive Mod-Anzahl. Discord muss dafür laufen.</p><span class="chip">App-ID 1567209388068970666</span></div>
+      </div>`;
+    document.getElementById('comp-start').onclick = async () => { const r = await api.companion.start(); if (!r.ok) return toast(r.error, true); companionEnabled = true; companionLinks = r.urls || []; pages.companion.render(); };
+    document.getElementById('comp-stop').onclick = async () => { await api.companion.stop(); companionEnabled = false; companionLinks = []; pages.companion.render(); };
+    view.querySelectorAll('[data-comp-copy]').forEach((b) => b.onclick = async () => { await api.copyText(b.dataset.compCopy); toast('Companion-Link kopiert.'); });
+    view.querySelectorAll('[data-macro]').forEach((b) => b.onclick = async () => { await api.copyText(b.dataset.macro); toast(`${b.dataset.macro} kopiert – im Spiel in die Konsole einfügen.`); });
+    document.getElementById('save-slot').onchange = () => { pages.companion.slot = document.getElementById('save-slot').value; pages.companion.render(); };
+    document.getElementById('save-refresh').onclick = () => pages.companion.render();
+    const field = document.getElementById('save-field');
+    if (field && editor.fields.length) { document.getElementById('save-value').value = editor.fields[Number(field.value)].value; field.onchange = () => { document.getElementById('save-value').value = editor.fields[Number(field.value)].value; }; }
+    document.getElementById('save-apply')?.addEventListener('click', async () => { const f = editor.fields[Number(field.value)]; if (!f) return; if (!(await confirmDialog('Savegame-Wert ändern?', `Vollbackup von ${slot} erstellen und <${f.tag}> in ${f.file} ändern?`, 'Backup & ändern', true))) return; const r = await api.saveTools.edit(slot, f.file, f.tag, f.occurrence, document.getElementById('save-value').value); if (!r.ok) toast(r.error, true); else { toast('Geändert; Vorher-Backup: ' + r.backup); pages.companion.render(); } });
+    document.getElementById('binding-save').onclick = async () => { const r = await api.profileSnapshots.save('inputBinding', profile.id); if (!r.ok) toast(r.error, true); else { toast('Controllerbelegung gesichert.'); pages.companion.render(); } };
+    document.getElementById('binding-apply').onclick = async () => { if (!(await confirmDialog('Controllerbelegung anwenden?', 'Die aktuelle inputBinding.xml wird vorher als .agri-nexus.bak gesichert.', 'Sichern & anwenden', true))) return; const r = await api.profileSnapshots.apply('inputBinding', profile.id); if (!r.ok) toast(r.error, true); else toast('Controllerbelegung angewendet.'); };
+    document.getElementById('graphics-save').onclick = async () => { const name = prompt('Name für das Grafik-Preset (z. B. Ultra, FPS-Boost, Screenshot):'); if (!name) return; const r = await api.profileSnapshots.save('graphics', profile.id, name); if (!r.ok) toast(r.error, true); else { toast('Grafik-Preset gesichert.'); pages.companion.render(); } };
+    document.getElementById('graphics-apply').onclick = async () => { const name = document.getElementById('graphics-preset').value; if (!(await confirmDialog('Grafik-Preset anwenden?', `„${name}“ wird eingespielt. Die aktuelle gameSettings.xml wird zuvor gesichert.`, 'Sichern & anwenden', true))) return; const r = await api.profileSnapshots.apply('graphics', profile.id, name); if (!r.ok) toast(r.error, true); else toast('Grafik-Preset angewendet.'); };
+    document.getElementById('modpack-export').onclick = async () => { const r = await api.mods.exportManifest(); if (r.ok) toast(`Manifest exportiert: ${r.count} Mods · ${r.file}`); else if (!r.canceled) toast(r.error, true); };
+    document.getElementById('boot-refresh').onclick = () => pages.companion.render();
+    document.getElementById('perf-scan').onclick = async (e) => { const b = e.currentTarget; b.disabled = true; b.textContent = 'Scanne …'; const r = await api.mods.performanceReport(); b.disabled = false; b.textContent = 'Mod-Bloat scannen'; if (!r.ok) return toast(r.error, true); document.getElementById('perf-report').innerHTML = `<b>${fmtSize(r.totalBytes)} gesamt · ${r.largeCount} Mod(s) über 512 MiB · ${r.assetCount} große Assets</b><h3>Größte Mods</h3>${r.mods.slice(0,10).map((m) => `<div class="status-row"><span class="grow">${esc(m.name)}${m.error ? ' · ' + esc(m.error) : ''}</span>${fmtSize(m.size)}</div>`).join('')}<h3>Große Assets</h3>${r.assets.slice(0,15).map((a) => `<div class="status-row"><span class="grow">${esc(a.mod)} · ${esc(a.file)}</span>${fmtSize(a.size)} · ${esc(a.note)}</div>`).join('') || '<p>Keine großen Dateien erkannt.</p>'}<p class="note">Log: ${r.log?.ok ? `${r.log.counts?.errors || 0} Fehler, ${r.log.counts?.warnings || 0} Warnungen` : esc(r.log?.error || 'nicht gefunden')}</p>`; };
+    if (window._toolMacroHandler) document.removeEventListener('keydown', window._toolMacroHandler);
+    if (profile.devMode) { window._toolMacroHandler = (e) => { const n = e.key; if (!e.altKey || !['1','2','3','4'].includes(n)) return; const c = {1:'gsPlayerFlightMode',2:'gsMoneyAdd',3:'gsTimeSet',4:'gsToggleHUD'}[n]; e.preventDefault(); api.copyText(c); toast(`${c} kopiert – im Spiel einfügen.`); }; document.addEventListener('keydown', window._toolMacroHandler); }
+  }
+};
+
+pages.screenshots = {
+  title: 'Screenshots', icon: I.image || I.mods,
+  async render() {
+    const [r, saves] = await Promise.all([api.gallery.list(), api.saves.list()]);
+    const slotFilter = pages.screenshots.slot || '';
+    const items = (r.items || []).filter((x) => !slotFilter || x.tags?.savegame === slotFilter);
+    view.innerHTML = head('Screenshot-Galerie', 'Bilder mit Hof-, Karten- und Spielstand-Kontext versehen und vergleichen.', `<button class="btn" id="ss-open">Ordner öffnen</button>`) +
+      `<div class="toolbar"><select class="input" id="ss-filter"><option value="">Alle Spielstände</option>${(saves.items || []).map((s) => `<option value="${esc(s.slot)}" ${slotFilter === s.slot ? 'selected' : ''}>${esc(s.slot)} · ${esc(s.name)}</option>`).join('')}</select><select class="input" id="ss-left"><option value="">Vorher-Bild wählen</option>${r.items.map((x) => `<option value="${esc(x.name)}">${esc(x.name)}</option>`).join('')}</select><select class="input" id="ss-right"><option value="">Nachher-Bild wählen</option>${r.items.map((x) => `<option value="${esc(x.name)}">${esc(x.name)}</option>`).join('')}</select><button class="btn" id="ss-compare">Vergleichen</button></div>
+      <div class="note" style="margin:0 0 14px">${esc(r.dir)} · Kontext wird als Agri Nexus JSON-Begleitdatei neben dem Bild gespeichert.</div><div class="shot-grid">${items.length ? items.map((x) => `<article class="card shot"><img src="" loading="lazy" data-shot="${esc(x.name)}" alt="${esc(x.name)}"><b title="${esc(x.name)}">${esc(x.name)}</b><small>${fmtDate(x.mtime)}${x.tags ? ` · ${esc(x.tags.profile || '')} · ${esc(x.tags.map || '')} · ${esc(x.tags.savegame || '')}` : ''}</small><div class="pc-actions"><button class="btn sm" data-tagshot="${esc(x.name)}">Kontext übernehmen</button><button class="btn sm" data-copyshot="${esc(x.name)}">Kopieren</button><button class="btn sm" data-revealshot="${esc(x.name)}">Teilen / öffnen</button></div></article>`).join('') : emptyBox('Keine Screenshots gefunden', 'Der Ordner screenshots im FarmingSimulator2025-Profil ist leer.')}</div>`;
+    document.getElementById('ss-open').onclick = () => api.gallery.open();
+    document.getElementById('ss-filter').onchange = (e) => { pages.screenshots.slot = e.target.value; pages.screenshots.render(); };
+    document.getElementById('ss-compare').onclick = async () => {
+      const left = document.getElementById('ss-left').value, right = document.getElementById('ss-right').value;
+      if (!left || !right) return toast('Bitte zwei Screenshots für den Vergleich wählen.', true);
+      const [a, b] = await Promise.all([api.gallery.image(left), api.gallery.image(right)]);
+      openModal(`<h2>Vorher / Nachher</h2><div class="g-2"><figure><img style="width:100%;border-radius:12px" src="${a}" alt=""><figcaption>${esc(left)}</figcaption></figure><figure><img style="width:100%;border-radius:12px" src="${b}" alt=""><figcaption>${esc(right)}</figcaption></figure></div><div class="modal-actions"><button class="btn primary" data-close>Schließen</button></div>`, true).el.querySelector('[data-close]').onclick = (e) => e.currentTarget.closest('.overlay').remove();
+    };
+    const screenshotObserver = new IntersectionObserver((entries, observer) => { for (const entry of entries) if (entry.isIntersecting) { const img = entry.target; observer.unobserve(img); api.gallery.image(img.dataset.shot).then((src) => { if (img.isConnected) img.src = src; }); } }, { root: document.querySelector('.content'), rootMargin: '180px' });
+    view.querySelectorAll('[data-shot]').forEach((img) => screenshotObserver.observe(img));
+    view.querySelectorAll('[data-copyshot]').forEach((b) => b.onclick = async () => toast(await api.gallery.copy(b.dataset.copyshot) ? 'Bild in die Zwischenablage kopiert.' : 'Bild konnte nicht kopiert werden.', false));
+    view.querySelectorAll('[data-revealshot]').forEach((b) => b.onclick = () => api.gallery.reveal(b.dataset.revealshot));
+    view.querySelectorAll('[data-tagshot]').forEach((b) => b.onclick = async () => { const s = activeProfile().savegame || ''; const savegame = prompt('Spielstand (z. B. savegame1):', s); if (savegame === null) return; const mapName = (saves.items || []).find((x) => x.slot === savegame)?.map || ''; const map = prompt('Kartenname:', mapName) || ''; const result = await api.gallery.tag(b.dataset.tagshot, { savegame, map }); if (!result.ok) toast(result.error, true); else { toast('Kontext-Tags gespeichert.'); pages.screenshots.render(); } });
+  }
+};
+
+// RP lobby, farm roles, contracts, and admin controls.
+let rpPeer = null, rpHost = false, rpState = null, rpConnections = new Map(), rpMemberId = '', rpName = 'Spieler', rpSaveSyncUrl = '', rpSaveSyncTimer = null;
+function rpBlank() { return { locked: false, server: { ip: '', port: '10823', password: '' }, rules: 'Bitte respektvoll spielen und die Serverregeln beachten.', members: [], farms: [], tasks: [], fieldMarkers: [], deliveries: [], events: [], rentals: [] }; }
+function rpSend(conn, payload) { try { conn.send(payload); } catch {} }
+async function rpDownloadSavegame() {
+  if (!rpHost || !rpSaveSyncUrl) return;
+  const result = await api.rp.syncSavegame(rpSaveSyncUrl);
+  const el = document.getElementById('rp-save-sync-status');
+  if (el) el.textContent = result.ok ? `Aktualisiert ${fmtDate(result.downloadedAt)} · ${fmtSize(result.bytes)}` : result.error;
+  if (!result.ok) toast('Admin-Savegame-Sync: ' + result.error, true);
+}
+function rpPublish() { if (!rpHost) return; for (const c of rpConnections.values()) rpSend(c, { type: 'snapshot', state: rpState }); renderRP(); }
+function rpApplyAction(conn, m) {
+  if (!rpHost || !rpState || !m || !m.action) return;
+  const actor = rpState.members.find((x) => x.id === conn.peer), managed = (farmId) => actor && (actor.role === 'Admin' || (actor.role === 'Hofleiter' && actor.farmId === farmId));
+  if (actor && !actor.acceptedRules && m.action !== 'acceptRules') { rpSend(conn, { type: 'notice', text: 'Bitte zuerst die Serverregeln bestätigen.' }); return; }
+  if (m.action === 'joinFarm') { const member = actor; if (member && rpState.farms.some((f) => f.id === m.farmId)) { member.farmId = m.farmId; member.role = 'Freiberufler'; } }
+  if (m.action === 'acceptRules' && actor) actor.acceptedRules = true;
+  if (m.action === 'createFarm' && actor && rpState.farms.length < 30 && String(m.name || '').trim() && !rpState.farms.some((f) => f.name.toLowerCase() === String(m.name).trim().toLowerCase())) {
+    const id = 'farm-' + Date.now(); rpState.farms.push({ id, name: String(m.name).trim().slice(0, 60), balance: 100000, priceList: [], structures: [], roles: [] }); actor.farmId = id; actor.role = 'Hofleiter';
+  }
+  if (m.action === 'startShift' && actor && !actor.shiftStartedAt) actor.shiftStartedAt = Date.now();
+  if (m.action === 'endShift' && actor?.shiftStartedAt) { const startedAt = actor.shiftStartedAt, endedAt = Date.now(), minutes = Math.max(1, Math.round((endedAt - startedAt) / 60000)); actor.workMinutes = (actor.workMinutes || 0) + minutes; (actor.workSessions ||= []).push({ startedAt, endedAt, minutes }); actor.shiftStartedAt = 0; }
+  if (m.action === 'setRules' && actor?.role === 'Admin') rpState.rules = String(m.rules || '').slice(0, 2500);
+  if (m.action === 'transfer') {
+    const from = rpState.farms.find((f) => f.id === actor?.farmId), to = rpState.farms.find((f) => f.id === m.toFarmId), amount = Math.floor(Number(m.amount));
+    if (from && to && from.id !== to.id && managed(from.id) && amount > 0 && amount <= from.balance) { from.balance -= amount; to.balance += amount; (rpState.transfers ||= []).unshift({ id: 'tx-' + Date.now(), from: from.id, to: to.id, amount, memo: String(m.memo || '').slice(0, 120), at: Date.now() }); }
+  }
+  if (m.action === 'addRental' && managed(actor?.farmId) && actor?.farmId) rpState.rentals.unshift({ id: 'rent-' + Date.now(), farmId: actor.farmId, machine: String(m.machine || '').slice(0, 80), hourly: Math.max(0, Number(m.hourly) || 0), listedBy: actor.id, bookedBy: '', hours: 0 });
+  if (m.action === 'bookRental') {
+    const item = rpState.rentals.find((x) => x.id === m.rentalId), farm = rpState.farms.find((x) => x.id === item?.farmId), hours = Math.min(168, Math.max(1, Number(m.hours) || 1)), renter = rpState.farms.find((x) => x.id === actor?.farmId);
+    if (item && !item.bookedBy && renter && farm && renter.id !== farm.id && renter.balance >= item.hourly * hours) { renter.balance -= item.hourly * hours; farm.balance += item.hourly * hours; item.bookedBy = actor.id; item.hours = hours; }
+  }
+  if (m.action === 'addRate' && managed(actor?.farmId) && actor?.farmId) { const farm = rpState.farms.find((x) => x.id === actor.farmId); (farm.priceList ||= []).unshift({ service: String(m.service || '').slice(0, 80), price: Math.max(0, Number(m.price) || 0), unit: String(m.unit || 'ha').slice(0, 16) }); }
+  if (m.action === 'addMarker' && managed(actor?.farmId) && actor?.farmId) rpState.fieldMarkers.unshift({ id: 'field-' + Date.now(), farmId: actor.farmId, field: String(m.field || '').slice(0, 40), crop: String(m.crop || '').slice(0, 50), note: String(m.note || '').slice(0, 140), author: actor.name });
+  if (m.action === 'createDelivery' && managed(actor?.farmId) && actor?.farmId) rpState.deliveries.unshift({ id: 'delivery-' + Date.now(), fromFarm: actor.farmId, toFarm: String(m.toFarmId || ''), load: String(m.load || '').slice(0, 120), liters: Math.max(0, Number(m.liters) || 0), amount: Math.max(0, Number(m.amount) || 0), signed: false });
+  if (m.action === 'signDelivery') { const d = rpState.deliveries.find((x) => x.id === m.deliveryId), receiver = rpState.farms.find((f) => f.id === d?.toFarm); const sender = rpState.farms.find((f) => f.id === d?.fromFarm); if (d && !d.signed && receiver && sender && managed(receiver.id) && receiver.balance >= d.amount) { receiver.balance -= d.amount; sender.balance += d.amount; d.signed = true; d.signedBy = actor.id; } }
+  if (m.action === 'createEvent' && managed(actor?.farmId) && actor?.farmId) rpState.events.unshift({ id: 'event-' + Date.now(), farmId: actor.farmId, title: String(m.title || '').slice(0, 100), startsAt: String(m.startsAt || '').slice(0, 32), signups: [] });
+  if (m.action === 'signupEvent') { const event = rpState.events.find((x) => x.id === m.eventId); if (event && !event.signups.some((x) => x.memberId === actor?.id)) event.signups.push({ memberId: actor.id, role: String(m.role || '').slice(0, 50) }); }
+  if (m.action === 'applyTask') { const task = rpState.tasks.find((x) => x.id === m.taskId); if (task && task.status === 'Open') { task.assignedTo = conn.peer; task.status = 'In Progress'; } }
+  if (m.action === 'createTask' && (managed(m.task?.farmId) || actor?.role === 'Admin')) {
+    const raw = m.task || {};
+    rpState.tasks.unshift({ id: 'task-' + Date.now(), title: String(raw.title || '').slice(0, 100), farmId: String(raw.farmId || ''), reward: Math.min(100000000, Math.max(0, Number(raw.reward) || 0)), field: String(raw.field || '').slice(0, 40), machinery: String(raw.machinery || '').slice(0, 160), screenshot: String(raw.screenshot || '').slice(0, 255), assignedTo: '', status: 'Open' });
+  }
+  if (m.action === 'assignTask') { const task = rpState.tasks.find((x) => x.id === m.taskId); if (task && managed(task.farmId) && rpState.members.some((x) => x.id === m.memberId && x.farmId === task.farmId)) { task.assignedTo = m.memberId; task.status = m.memberId ? 'In Progress' : 'Open'; } }
+  if (m.action === 'completeTask') {
+    const task = rpState.tasks.find((x) => x.id === m.taskId), employer = rpState.farms.find((x) => x.id === task?.farmId), worker = rpState.members.find((x) => x.id === task?.assignedTo), workerFarm = rpState.farms.find((x) => x.id === worker?.farmId);
+    if (task && task.status !== 'Completed' && task.assignedTo && managed(task.farmId) && employer && workerFarm && employer.balance >= task.reward) { employer.balance -= task.reward; workerFarm.balance += task.reward; task.status = 'Completed'; }
+  }
+  if (m.action === 'attachScreenshot') { const task = rpState.tasks.find((x) => x.id === m.taskId); if (task && managed(task.farmId)) task.screenshot = String(m.screenshot || '').slice(0, 255); }
+  if (m.action === 'deleteTask') { const task = rpState.tasks.find((x) => x.id === m.taskId); if (task && managed(task.farmId)) rpState.tasks = rpState.tasks.filter((x) => x.id !== m.taskId); }
+  rpPublish();
+}
+function rpHandle(conn, msg) {
+  if (msg?.type === 'hello' && rpHost) {
+    if (rpState.locked) { rpSend(conn, { type: 'kick', reason: 'Lobby ist gesperrt.' }); conn.close(); return; }
+    const member = { id: conn.peer, name: String(msg.name || 'Spieler').slice(0, 32), farmId: '', role: 'Freiberufler', acceptedRules: false, workMinutes: 0, shiftStartedAt: 0 };
+    rpState.members = rpState.members.filter((x) => x.id !== conn.peer).concat(member); rpSend(conn, { type: 'snapshot', state: rpState }); rpPublish(); return;
+  }
+  if (msg?.type === 'action' && rpHost) return rpApplyAction(conn, msg);
+  if (msg?.type === 'snapshot' && !rpHost) { rpState = msg.state; renderRP(); return; }
+  if (msg?.type === 'notice' && !rpHost) { toast(msg.text || 'Lobby-Aktion nicht erlaubt.', true); return; }
+  if (msg?.type === 'kick' && !rpHost) { toast(msg.reason || 'Du wurdest aus der Lobby entfernt.', true); try { rpConn?.close(); rpPeer?.destroy(); } catch {} rpState = null; rpHost = false; renderRP(); return; }
+  if (msg?.type === 'sync-mods' && !rpHost) { rpSyncClient(conn, msg.items || []); return; }
+  if (msg?.type === 'mod-request' && rpHost) { rpSendMod(conn, msg.name); return; }
+  if (msg?.type === 'mod-sync-total' && rpHost) { if (msg.total > 0) rpStartPending.add(conn.peer); else { rpStartPending.delete(conn.peer); if (rpStartPending.size === 0 && rpStarting) rpLaunchSession(); } return; }
+  if (msg?.type === 'mod-sync-done' && rpHost) { rpStartPending.delete(conn.peer); if (rpStartPending.size === 0 && rpStarting) rpLaunchSession(); return; }
+  if (msg?.type === 'mod-sync-failed' && rpHost) { rpStarting = false; rpStartPending.clear(); toast(`${msg.name || 'Ein Client'}: Mod-Sync fehlgeschlagen. Session nicht gestartet.`, true); return; }
+  if (msg?.type === 'mod-start' && !rpHost) { rpStartReceive(msg); return; }
+  if (msg?.type === 'mod-chunk' && !rpHost) { rpReceiveChunk(conn, msg); return; }
+  if (msg?.type === 'mod-end' && !rpHost) { rpFinishReceive(conn); return; }
+  if (msg?.type === 'launch-session' && !rpHost) {
+    toast(`RP-Session startet. Server: ${msg.server.ip}:${msg.server.port}. Öffne Multiplayer und suche den Server; ein Direktbeitritt per IP ist nicht verfügbar.`, true);
+    api.launch().then((r) => { if (!r.ok) toast(r.error, true); }); return;
+  }
+}
+let rpConn = null, rpReceiveToken = '', rpReceiveSize = 0, rpReceiveName = '';
+let rpSyncQueue = [], rpSyncExpected = 0, rpSyncReceived = 0, rpStartPending = new Set(), rpStarting = false;
+async function rpSyncClient(conn, hostItems) {
+  const local = await api.sync.manifest(), map = new Map(local.items.map((x) => [x.name.toLowerCase(), x]));
+  rpSyncQueue = hostItems.filter((x) => !map.has(x.name.toLowerCase()) || map.get(x.name.toLowerCase()).sha256 !== x.sha256);
+  rpSyncExpected = rpSyncQueue.length; rpSyncReceived = 0;
+  rpSend(conn, { type: 'mod-sync-total', total: rpSyncExpected });
+  if (rpSyncQueue.length) rpSend(conn, { type: 'mod-request', name: rpSyncQueue.shift().name });
+  else rpSend(conn, { type: 'mod-sync-done' });
+  const missing = rpSyncExpected;
+  toast(`${missing} Mods werden für die RP-Lobby synchronisiert.`);
+}
+async function rpSendMod(conn, name) {
+  const manifest = await api.sync.manifest(), meta = manifest.items.find((x) => x.name === name); if (!meta) return;
+  rpSend(conn, { type: 'mod-start', name, size: meta.size });
+  for (let offset = 0; offset < meta.size; offset += 48 * 1024) {
+    rpSend(conn, { type: 'mod-chunk', data: await api.sync.read(name, offset, Math.min(48 * 1024, meta.size - offset)) });
+    while (conn.dataChannel && conn.dataChannel.bufferedAmount > 1024 * 1024) await new Promise((r) => setTimeout(r, 40));
+  }
+  rpSend(conn, { type: 'mod-end' });
+}
+async function rpStartReceive(msg) { rpReceiveName = msg.name; rpReceiveSize = msg.size; rpReceiveToken = await api.sync.begin(msg.name, msg.size); }
+async function rpReceiveChunk(conn, msg) { if (rpReceiveToken) await api.sync.chunk(rpReceiveToken, msg.data); }
+async function rpFinishReceive(conn) {
+  if (!rpReceiveToken) return;
+  const r = await api.sync.finish(rpReceiveToken); rpReceiveToken = '';
+  if (!r.ok) { toast(r.error, true); rpSend(conn, { type: 'mod-sync-failed', name: rpReceiveName }); return; }
+  rpSyncReceived++;
+  if (rpSyncQueue.length) rpSend(conn, { type: 'mod-request', name: rpSyncQueue.shift().name });
+  else rpSend(conn, { type: 'mod-sync-done' });
+  toast(`Synchronisiert: ${r.file}`);
+}
+async function rpLaunchSession() {
+  if (!rpHost || !rpStarting || rpStartPending.size) return;
+  rpStarting = false;
+  for (const c of rpConnections.values()) rpSend(c, { type: 'launch-session', server: rpState.server });
+  const launch = await api.launch(); if (!launch.ok) toast(launch.error, true);
+  toast('Spiel gestartet. Der Multiplayer-Server muss im Spielbrowser ausgewählt werden.');
+}
+function rpCreateConn(conn) {
+  conn.on('open', () => { if (!rpHost) rpSend(conn, { type: 'hello', name: rpName }); });
+  conn.on('data', (m) => rpHandle(conn, m));
+  conn.on('close', () => { rpConnections.delete(conn.peer); rpStartPending.delete(conn.peer); if (rpHost && rpState) { rpState.members = rpState.members.filter((x) => x.id !== conn.peer); rpPublish(); if (rpStarting && rpStartPending.size === 0) rpLaunchSession(); } });
+  if (rpHost) rpConnections.set(conn.peer, conn);
+}
+
+pages.rp = {
+  title: 'RP & Party Network', icon: I.server,
+  async render() { await renderRP(); }
+};
+async function renderRP() {
+  if (page !== 'rp') return;
+  if (!rpState) {
+    view.innerHTML = head('RP & Party Network', 'Lobbys, Hofrollen und Arbeitsverträge für gemeinsame RP-Sessions.') +
+      `<div class="card"><h2>Lobby betreten oder hosten</h2><div class="form-row"><div class="field"><label>Dein Spielername</label><input class="input" id="rp-name" maxlength="32" value="${esc(rpName)}"></div><div class="field"><label>Raumcode</label><input class="input mono" id="rp-code" maxlength="6" placeholder="6 Ziffern"></div></div><div class="pc-actions"><button class="btn primary" id="rp-host">Lobby erstellen (Admin)</button><button class="btn" id="rp-join">Lobby beitreten</button></div><p class="note">Verbindungen werden per WebRTC aufgebaut. Ein Host muss für andere Teilnehmer erreichbar sein.</p></div>`;
+    q('#rp-name').oninput = (e) => rpName = e.target.value.trim().slice(0, 32) || 'Spieler';
+    q('#rp-host').onclick = () => {
+      if (typeof Peer === 'undefined') return toast('PeerJS ist nicht geladen. Bitte Agri Nexus neu starten oder den Build aktualisieren.', true);
+      rpName = q('#rp-name').value.trim() || 'Host'; rpHost = true; rpState = rpBlank();
+      try { rpPeer = new Peer('RPX' + String(Math.floor(100000 + Math.random() * 900000))); }
+      catch (err) { rpHost = false; rpState = null; return toast('Lobby konnte nicht erstellt werden: ' + err.message, true); }
+      q('#rp-host').disabled = true; rpPeer.on('open', (id) => { rpMemberId = id; rpState.members = [{ id, name: rpName, farmId: '', role: 'Admin', acceptedRules: true, workMinutes: 0, shiftStartedAt: 0 }]; renderRP(); });
+      rpPeer.on('connection', (conn) => rpCreateConn(conn)); rpPeer.on('error', (e) => { toast(`Lobby-Fehler (${e.type || 'Verbindung'}): ${e.message || 'PeerJS-Server nicht erreichbar.'}`, true); if (!rpMemberId) { rpHost = false; rpState = null; try { rpPeer.destroy(); } catch {} renderRP(); } });
+    };
+    q('#rp-join').onclick = () => {
+      if (typeof Peer === 'undefined') return toast('PeerJS ist nicht geladen. Bitte Agri Nexus neu starten oder den Build aktualisieren.', true);
+      const code = q('#rp-code').value.replace(/\D/g, ''); if (code.length !== 6) return toast('Raumcode muss aus sechs Ziffern bestehen.', true);
+      rpName = q('#rp-name').value.trim() || 'Spieler'; rpHost = false; rpPeer = new Peer();
+      rpPeer.on('open', (id) => { rpMemberId = id; rpConn = rpPeer.connect('RPX' + code, { reliable: true }); rpCreateConn(rpConn); }); rpPeer.on('error', (e) => toast('Lobby-Fehler: ' + e.type, true));
+      view.innerHTML = head('RP & Party Network', 'Verbinde mit der Lobby …');
+    };
+    return;
+  }
+  const admin = rpHost;
+  const farms = rpState.farms || [], tasks = rpState.tasks || [], members = rpState.members || [];
+  const localMember = members.find((m) => m.id === rpMemberId);
+  const canManageFarm = (farmId) => admin || (localMember?.role === 'Hofleiter' && localMember.farmId === farmId);
+  const manageableFarms = admin ? farms : farms.filter((f) => canManageFarm(f.id));
+  const canPostTasks = admin || manageableFarms.length > 0;
+  const memberName = (id) => members.find((m) => m.id === id)?.name || 'Unbekannt';
+  const gallery = await api.gallery.list();
+  const weekStart = new Date(); weekStart.setHours(0, 0, 0, 0); weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  const weeklyHours = (m) => ((m.workSessions || []).filter((x) => x.startedAt >= weekStart.getTime()).reduce((sum, x) => sum + x.minutes, 0) + (m.shiftStartedAt >= weekStart.getTime() ? Math.max(0, (Date.now() - m.shiftStartedAt) / 60000) : 0)) / 60;
+  const accepted = admin || !!localMember?.acceptedRules;
+  const myFarm = farms.find((f) => f.id === localMember?.farmId);
+  view.innerHTML = head('RP & Party Network', `${admin ? 'Admin' : 'Mitglied'} · Raum ${esc(rpPeer?.id?.replace(/^RPX/, '') || '')}`, admin ? `<button class="btn primary" id="rp-start">Start RP Session</button><button class="btn" id="rp-lock">${rpState.locked ? 'Lobby entsperren' : 'Lobby sperren'}</button>` : '') +
+   `<div class="g-2"><div class="card"><h2>Lobby &amp; Server</h2><p>${members.length} Spieler · ${rpState.locked ? 'gesperrt' : 'offen'}</p>${admin ? `<div class="form-row"><div class="field"><label>Server-IP / Hostname</label><input class="input" id="rp-ip" value="${esc(rpState.server.ip)}" placeholder="server.example.net"></div><div class="field"><label>Port</label><input class="input" id="rp-port" value="${esc(rpState.server.port)}" placeholder="10823"></div></div><div class="field"><label>Spielpasswort</label><input class="input" id="rp-password" type="password" value="${esc(rpState.server.password)}"></div><button class="btn" id="rp-save-server">Serverdaten speichern</button>` : `<p>Server: ${esc(rpState.server.ip || 'noch nicht gesetzt')}:${esc(rpState.server.port)} · Passwort ${esc(rpState.server.password || 'nicht gesetzt')}</p>`}<div class="status-row"><span class="grow"><b>Mitglieder</b>${members.map((m) => `<small>${esc(m.name)} · ${esc(m.role)}${m.farmId ? ' · ' + esc(farms.find((f) => f.id === m.farmId)?.name || '') : ''}</small>`).join('')}</span>${admin ? members.filter((m) => m.id !== rpMemberId).map((m) => `<button class="btn sm danger" data-rp-kick="${esc(m.id)}">Kick ${esc(m.name)}</button>`).join('') : ''}</div></div>
+   <div class="card"><h2>Höfe &amp; Rollen</h2>${admin ? `<div class="toolbar"><input class="input" id="rp-farm-name" placeholder="Hof Erlengrat"><button class="btn" id="rp-add-farm">Hof erstellen</button><input class="input" id="rp-structure" placeholder="Gebäude / Struktur"><button class="btn" id="rp-add-structure">Struktur hinzufügen</button></div>` : ''}${farms.map((f) => `<div class="status-row"><span class="grow"><b>${esc(f.name)}</b><small>${(f.structures || []).map(esc).join(' · ') || 'Keine Strukturen'} · ${members.filter((m) => m.farmId === f.id).length} Spieler</small></span>${!admin ? `<button class="btn sm" data-rp-joinfarm="${esc(f.id)}">Hof beitreten</button>` : `<select class="input" data-rp-farm="${esc(f.id)}"><option value="">Spieler zuweisen …</option>${members.filter((m) => m.id !== rpMemberId).map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select>`}</div>`).join('') || emptyBox('Noch keine Höfe', 'Der Admin kann den ersten Hof erstellen.')}${admin ? members.filter((m) => m.id !== rpMemberId && m.farmId).map((m) => `<div class="toolbar"><span>${esc(m.name)} · ${esc(farms.find((f) => f.id === m.farmId)?.name || '')}</span><select class="input" data-rp-role="${esc(m.id)}"><option ${m.role === 'Hofleiter' ? 'selected' : ''}>Hofleiter</option><option ${m.role === 'Mitarbeiter' ? 'selected' : ''}>Mitarbeiter</option><option ${m.role === 'Freiberufler' ? 'selected' : ''}>Freiberufler</option></select></div>`).join('') : ''}</div></div>
+   <div class="card" style="margin-top:16px"><h2>Task Board · Arbeitsverträge</h2>${canPostTasks ? `<div class="form-row"><div class="field"><label>Auftrag</label><input class="input" id="rp-task-title" placeholder="Feld-Ernte / Ballentransport"></div><div class="field"><label>Hof</label><select class="input" id="rp-task-farm">${manageableFarms.map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join('')}</select></div><div class="field"><label>Belohnung (€)</label><input class="input" id="rp-task-reward" type="number" min="0" value="500"></div><div class="field"><label>Ziel-Feld</label><input class="input" id="rp-task-field" placeholder="Feld 12"></div><div class="field"><label>Benötigte Maschinen</label><input class="input" id="rp-task-machinery" placeholder="Mähdrescher, Anhänger"></div><div class="field"><label>Abschluss-Screenshot</label><select class="input" id="rp-task-shot"><option value="">Keiner</option>${gallery.items.map((x) => `<option value="${esc(x.name)}">${esc(x.name)}</option>`).join('')}</select></div></div><button class="btn primary" id="rp-add-task">Vertrag veröffentlichen</button>` : ''}<div class="rp-task-grid">${tasks.map((t) => `<article class="card"><div class="pc-tags"><span class="tag">${esc(t.status)}</span><span class="tag">${esc(farms.find((f) => f.id === t.farmId)?.name || 'Hof')}</span></div><h3>${esc(t.title)}</h3><p>${esc(t.details || '')}</p><div class="pc-info"><dt>Belohnung</dt><dd>${eur(t.reward)}</dd><dt>Feld</dt><dd>${esc(t.field || '–')}</dd><dt>Maschinen</dt><dd>${esc(t.machinery || '–')}</dd><dt>Zugewiesen</dt><dd>${esc(t.assignedTo ? memberName(t.assignedTo) : 'Offen')}</dd></div>${t.screenshot ? `<button class="btn sm" data-rp-shot="${esc(t.screenshot)}">Abschlussbild: ${esc(t.screenshot)}</button>` : ''}${t.status === 'Completed' && canManageFarm(t.farmId) ? `<select class="input" data-rp-shotselect="${esc(t.id)}"><option value="">Screenshot anhängen …</option>${gallery.items.map((x) => `<option value="${esc(x.name)}" ${x.name === t.screenshot ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}${canManageFarm(t.farmId) ? `<div class="pc-actions"><select class="input" data-rp-assign="${esc(t.id)}"><option value="">Spieler zuweisen …</option>${members.filter((m) => m.farmId === t.farmId).map((m) => `<option value="${esc(m.id)}" ${m.id === t.assignedTo ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select><button class="btn sm" data-rp-complete="${esc(t.id)}">Abschließen</button><button class="btn sm danger" data-rp-delete="${esc(t.id)}">Entfernen</button></div>` : t.status === 'Open' ? `<button class="btn sm" data-rp-apply="${esc(t.id)}">Auftrag annehmen</button>` : ''}</article>`).join('') || emptyBox('Keine Verträge', 'Veröffentliche einen Auftrag für die Höfe.')}</div></div>`;
+  if (admin && q('#rp-structure')) {
+    q('#rp-structure').insertAdjacentHTML('beforebegin', '<select class="input" id="rp-structure-farm"></select>');
+    q('#rp-structure-farm').innerHTML = farms.map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join('');
+  }
+  const rpAct = (action, data = {}) => admin ? rpApplyAction({ peer: rpMemberId }, { action, ...data }) : rpSend(rpConn, { type: 'action', action, ...data });
+  const farmOptionList = (exclude = '') => farms.filter((f) => f.id !== exclude).map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join('');
+  const showRulesGate = !accepted;
+  view.insertAdjacentHTML('beforeend', `<div class="card" style="margin-top:16px"><h2>Whitelist &amp; Schicht</h2><p class="desc-box">${esc(rpState.rules || 'Keine zusätzlichen Regeln hinterlegt.')}</p>${admin ? `<textarea class="input" id="rp-rules" maxlength="2500" placeholder="Serverregeln">${esc(rpState.rules)}</textarea><button class="btn" id="rp-save-rules">Regeln speichern</button>` : showRulesGate ? `<label class="setting"><span>Ich habe die Serverregeln gelesen und akzeptiere sie.</span><input type="checkbox" id="rp-accept-rules"></label><button class="btn primary" id="rp-confirm-rules" disabled>Regeln bestätigen</button>` : '<span class="chip ok"><i></i>Regeln bestätigt</span>'}<p class="note">${localMember?.shiftStartedAt ? 'Schicht läuft seit ' + fmtDate(localMember.shiftStartedAt) : 'Keine aktive Schicht'}</p><button class="btn" id="rp-shift">${localMember?.shiftStartedAt ? 'Schicht beenden' : 'Schicht beginnen'}</button>${myFarm ? `<span class="chip">${esc(myFarm.name)} · Funkkanal-Vorschlag: ${esc(myFarm.voiceChannel || 'Funkkanal ' + myFarm.name)}</span>` : ''}</div>
+    <div class="g-2" style="margin-top:16px"><div class="card"><h2>Hofkonten &amp; Überweisungen</h2>${farms.map((f) => `<div class="status-row"><span class="grow"><b>${esc(f.name)}</b><small>Virtuelles Guthaben</small></span><strong>${eur(f.balance || 0)}</strong></div>`).join('') || '<p>Noch keine Höfe.</p>'}${myFarm ? `<div class="form-row"><select class="input" id="rp-pay-to">${farmOptionList(myFarm.id)}</select><input class="input" id="rp-pay-amount" type="number" min="1" placeholder="Betrag €"><input class="input" id="rp-pay-memo" placeholder="Verwendungszweck"><button class="btn" id="rp-transfer">Überweisen</button></div>` : ''}<small>Letzte Transfers: ${(rpState.transfers || []).slice(0, 5).map((x) => `${esc(farms.find((f) => f.id === x.from)?.name || '')} → ${esc(farms.find((f) => f.id === x.to)?.name || '')}: ${eur(x.amount)} ${esc(x.memo)}`).join(' · ') || 'Keine'}</small></div>
+    <div class="card"><h2>Fuhrpark &amp; LU-Preisliste</h2>${canManageFarm(myFarm?.id) ? `<div class="form-row"><input class="input" id="rp-rent-machine" placeholder="Drescher Claas Lexion"><input class="input" id="rp-rent-rate" type="number" min="0" placeholder="€/Ingame-Stunde"><button class="btn" id="rp-rent-add">Zur Miete anbieten</button></div><div class="form-row"><input class="input" id="rp-rate-service" placeholder="Gülle ausbringen"><input class="input" id="rp-rate-price" type="number" min="0" placeholder="€/ha"><button class="btn" id="rp-rate-add">Preis veröffentlichen</button></div>` : ''}<h3>Maschinenangebote</h3>${(rpState.rentals || []).map((r) => `<div class="status-row"><span class="grow">${esc(r.machine)} · ${eur(r.hourly)} / Ingame-Stunde · ${esc(farms.find((f) => f.id === r.farmId)?.name || '')}${r.bookedBy ? ' · gebucht' : ''}</span>${!r.bookedBy && myFarm?.id !== r.farmId ? `<input class="input" type="number" min="1" max="168" value="1" data-rent-hours="${esc(r.id)}"><button class="btn sm" data-rent-book="${esc(r.id)}">Buchen</button>` : ''}</div>`).join('') || '<p>Keine Maschinen gelistet.</p>'}<h3>Preisliste</h3>${farms.map((f) => (f.priceList || []).map((x) => `<div class="status-row"><span class="grow">${esc(f.name)} · ${esc(x.service)}</span><strong>${eur(x.price)} / ${esc(x.unit)}</strong></div>`).join('')).join('') || '<p>Noch keine Preise.</p>'}</div>
+    <div class="card"><h2>Feldübersicht</h2><p class="note">Gemeinsame Feldliste (keine georeferenzierte Spielkarte).</p>${canManageFarm(myFarm?.id) ? `<div class="form-row"><input class="input" id="rp-field-number" placeholder="Feld 12"><input class="input" id="rp-field-crop" placeholder="Weizen"><input class="input" id="rp-field-note" placeholder="LU Schmidt baut ab"><button class="btn" id="rp-field-add">Markierung setzen</button></div>` : ''}${(rpState.fieldMarkers || []).map((x) => `<div class="status-row"><span class="grow"><b>${esc(x.field)} · ${esc(x.crop)}</b><small>${esc(farms.find((f) => f.id === x.farmId)?.name || '')} · ${esc(x.note)} · ${esc(x.author)}</small></span></div>`).join('') || '<p>Keine Feldmarkierungen.</p>'}</div>
+    <div class="card"><h2>Lieferscheine</h2>${canManageFarm(myFarm?.id) ? `<div class="form-row"><select class="input" id="rp-delivery-to">${farmOptionList(myFarm.id)}</select><input class="input" id="rp-delivery-load" placeholder="Silage"><input class="input" id="rp-delivery-liters" type="number" min="0" placeholder="Liter"><input class="input" id="rp-delivery-amount" type="number" min="0" placeholder="Zahlung €"><button class="btn" id="rp-delivery-add">Lieferschein erstellen</button></div>` : ''}${(rpState.deliveries || []).map((d) => `<div class="status-row"><span class="grow">${esc(farms.find((f) => f.id === d.fromFarm)?.name || '')} → ${esc(farms.find((f) => f.id === d.toFarm)?.name || '')}: ${fmtNum(d.liters)} L ${esc(d.load)} · ${eur(d.amount)} · ${d.signed ? 'gegengezeichnet' : 'offen'}</span>${!d.signed && canManageFarm(d.toFarm) ? `<button class="btn sm" data-delivery-sign="${esc(d.id)}">Gegenzeichnen &amp; zahlen</button>` : ''}</div>`).join('') || '<p>Keine Lieferscheine.</p>'}</div>
+    <div class="card"><h2>Schichtplan &amp; Mitarbeiter</h2>${admin ? `<div class="form-row"><input class="input" id="rp-event-title" placeholder="Große Häckselkette"><input class="input" id="rp-event-time" type="datetime-local"><button class="btn" id="rp-event-add">Termin erstellen</button></div>` : ''}<div class="rp-task-grid">${(rpState.events || []).map((e) => `<article class="card"><b>${esc(e.title)}</b><small>${esc(e.startsAt)} · ${esc(farms.find((f) => f.id === e.farmId)?.name || '')}</small><div class="pc-actions"><input class="input" placeholder="Rolle, z. B. Walzer" data-event-role="${esc(e.id)}"><button class="btn sm" data-event-sign="${esc(e.id)}">Eintragen</button></div><small>${(e.signups || []).map((x) => `${esc(members.find((m) => m.id === x.memberId)?.name || '')}: ${esc(x.role)}`).join(' · ')}</small></article>`).join('') || '<p>Keine Termine geplant.</p>'}</div>${admin ? `<h3>Wochenstunden (seit Montag)</h3>${members.map((m) => `<div class="status-row"><span class="grow">${esc(m.name)} · ${esc(m.role)}</span><strong>${fmtNum(weeklyHours(m), 1)} h${m.shiftStartedAt ? ' + aktiv' : ''}</strong></div>`).join('')}` : ''}</div></div>`);
+  if (!admin) view.insertAdjacentHTML('afterbegin', `<div class="card"><h2>Eigenen Hof gründen</h2><div class="toolbar"><input class="input" id="rp-new-farm" placeholder="LU Schmidt"><button class="btn" id="rp-create-farm">Hof erstellen</button></div></div>`);
+  else {
+    view.insertAdjacentHTML('afterbegin', `<div class="card"><h2>Admin-Savegame-Sync</h2><p class="note">HTTPS-Link zur aktuellen careerSavegame.xml. Agri Nexus lädt die Datei jetzt und minütlich neu, solange diese RP-Ansicht geöffnet ist.</p><div class="path-row"><input class="input mono" id="rp-save-url" placeholder="https://server.example/savegame.xml" value="${esc(rpSaveSyncUrl)}"><button class="btn" id="rp-save-url-start">URL speichern &amp; abrufen</button></div><small id="rp-save-sync-status"></small></div>`);
+    q('#rp-save-url-start').onclick = async () => {
+      rpSaveSyncUrl = q('#rp-save-url').value.trim();
+      if (!/^https:\/\//i.test(rpSaveSyncUrl)) return toast('Bitte einen HTTPS-Link eintragen.', true);
+      if (rpSaveSyncTimer) clearInterval(rpSaveSyncTimer);
+      await rpDownloadSavegame(); rpSaveSyncTimer = setInterval(rpDownloadSavegame, 60000);
+    };
+    if (rpSaveSyncUrl && !rpSaveSyncTimer) rpSaveSyncTimer = setInterval(rpDownloadSavegame, 60000);
+  }
+  if (admin) {
+    q('#rp-save-rules').onclick = () => rpAct('setRules', { rules: q('#rp-rules').value });
+  } else {
+    q('#rp-create-farm').onclick = () => rpAct('createFarm', { name: q('#rp-new-farm').value });
+    q('#rp-accept-rules')?.addEventListener('change', (e) => { q('#rp-confirm-rules').disabled = !e.target.checked; });
+    q('#rp-confirm-rules')?.addEventListener('click', () => rpAct('acceptRules'));
+  }
+  q('#rp-shift').onclick = () => rpAct(localMember?.shiftStartedAt ? 'endShift' : 'startShift');
+  q('#rp-transfer')?.addEventListener('click', () => rpAct('transfer', { toFarmId: q('#rp-pay-to').value, amount: q('#rp-pay-amount').value, memo: q('#rp-pay-memo').value }));
+  q('#rp-rent-add')?.addEventListener('click', () => rpAct('addRental', { machine: q('#rp-rent-machine').value, hourly: q('#rp-rent-rate').value }));
+  q('#rp-rate-add')?.addEventListener('click', () => rpAct('addRate', { service: q('#rp-rate-service').value, price: q('#rp-rate-price').value, unit: 'ha' }));
+  q('#rp-field-add')?.addEventListener('click', () => rpAct('addMarker', { field: q('#rp-field-number').value, crop: q('#rp-field-crop').value, note: q('#rp-field-note').value }));
+  q('#rp-delivery-add')?.addEventListener('click', () => rpAct('createDelivery', { toFarmId: q('#rp-delivery-to').value, load: q('#rp-delivery-load').value, liters: q('#rp-delivery-liters').value, amount: q('#rp-delivery-amount').value }));
+  view.querySelectorAll('[data-rent-book]').forEach((b) => b.onclick = () => rpAct('bookRental', { rentalId: b.dataset.rentBook, hours: view.querySelector(`[data-rent-hours="${b.dataset.rentBook}"]`).value }));
+  view.querySelectorAll('[data-delivery-sign]').forEach((b) => b.onclick = () => rpAct('signDelivery', { deliveryId: b.dataset.deliverySign }));
+  q('#rp-event-add')?.addEventListener('click', () => rpAct('createEvent', { title: q('#rp-event-title').value, startsAt: q('#rp-event-time').value }));
+  view.querySelectorAll('[data-event-sign]').forEach((b) => b.onclick = () => rpAct('signupEvent', { eventId: b.dataset.eventSign, role: view.querySelector(`[data-event-role="${b.dataset.eventSign}"]`).value }));
+  if (admin) {
+    q('#rp-lock').onclick = () => { rpState.locked = !rpState.locked; rpPublish(); };
+    q('#rp-save-server').onclick = () => { rpState.server = { ip: q('#rp-ip').value.trim(), port: q('#rp-port').value.trim() || '10823', password: q('#rp-password').value }; rpPublish(); };
+    q('#rp-add-farm').onclick = () => { const name = q('#rp-farm-name').value.trim(); if (!name) return; const id = 'farm-' + Date.now(); rpState.farms.push({ id, name, balance: 100000, priceList: [], structures: [], roles: [] }); const host = rpState.members.find((m) => m.id === rpMemberId); if (host && !host.farmId) host.farmId = id; rpPublish(); };
+    q('#rp-add-structure').onclick = () => { const farm = rpState.farms.find((f) => f.id === q('#rp-structure-farm').value), val = q('#rp-structure').value.trim(); if (farm && val) farm.structures.push(val); rpPublish(); };
+    view.querySelectorAll('[data-rp-farm]').forEach((s) => s.onchange = () => { const m = rpState.members.find((x) => x.id === s.value); if (m) { m.farmId = s.dataset.rpFarm; m.role = 'Freiberufler'; } rpPublish(); });
+    view.querySelectorAll('[data-rp-role]').forEach((s) => s.onchange = () => { const m = rpState.members.find((x) => x.id === s.dataset.rpRole); if (m) m.role = s.value; rpPublish(); });
+    view.querySelectorAll('[data-rp-kick]').forEach((b) => b.onclick = () => { const c = rpConnections.get(b.dataset.rpKick); rpSend(c, { type: 'kick', reason: 'Vom Admin entfernt.' }); c?.close(); rpConnections.delete(b.dataset.rpKick); rpState.members = rpState.members.filter((m) => m.id !== b.dataset.rpKick); rpPublish(); });
+    q('#rp-add-task')?.addEventListener('click', () => { const title = q('#rp-task-title').value.trim(); if (!title || !rpState.farms.length) return toast('Auftragstitel und mindestens ein Hof sind erforderlich.', true); rpAct('createTask', { task: { title, farmId: q('#rp-task-farm').value, reward: Number(q('#rp-task-reward').value) || 0, field: q('#rp-task-field').value.trim(), machinery: q('#rp-task-machinery').value.trim(), screenshot: q('#rp-task-shot').value } }); });
+    view.querySelectorAll('[data-rp-assign]').forEach((s) => s.onchange = () => rpAct('assignTask', { taskId: s.dataset.rpAssign, memberId: s.value }));
+    view.querySelectorAll('[data-rp-complete]').forEach((b) => b.onclick = () => rpAct('completeTask', { taskId: b.dataset.rpComplete }));
+    view.querySelectorAll('[data-rp-delete]').forEach((b) => b.onclick = () => rpAct('deleteTask', { taskId: b.dataset.rpDelete }));
+    view.querySelectorAll('[data-rp-shotselect]').forEach((s) => s.onchange = () => rpAct('attachScreenshot', { taskId: s.dataset.rpShotselect, screenshot: s.value }));
+    q('#rp-start').onclick = async () => {
+      const waitingRules = rpState.members.filter((m) => m.id !== rpMemberId && !m.acceptedRules);
+      if (waitingRules.length) return toast('Warte auf Regelbestätigung von: ' + waitingRules.map((m) => m.name).join(', '), true);
+      const manifest = await api.sync.manifest();
+      if (!rpState.server.ip) return toast('Bitte zuerst Server-IP und Port eintragen.', true);
+      rpStarting = true; rpStartPending = new Set(rpConnections.keys());
+      for (const c of rpConnections.values()) rpSend(c, { type: 'sync-mods', items: manifest.items });
+      if (!rpStartPending.size) await rpLaunchSession();
+      else toast('Mod-Abgleich läuft. Das Spiel startet nach Abschluss auf allen verbundenen Clients.');
+    };
+  } else {
+    view.querySelectorAll('[data-rp-joinfarm]').forEach((b) => b.onclick = () => rpSend(rpConn, { type: 'action', action: 'joinFarm', farmId: b.dataset.rpJoinfarm }));
+    view.querySelectorAll('[data-rp-apply]').forEach((b) => b.onclick = () => rpSend(rpConn, { type: 'action', action: 'applyTask', taskId: b.dataset.rpApply }));
+    q('#rp-add-task')?.addEventListener('click', () => {
+      const title = q('#rp-task-title').value.trim(); if (!title) return toast('Auftragstitel fehlt.', true);
+      rpSend(rpConn, { type: 'action', action: 'createTask', task: { title, farmId: q('#rp-task-farm').value, reward: Number(q('#rp-task-reward').value) || 0, field: q('#rp-task-field').value.trim(), machinery: q('#rp-task-machinery').value.trim(), screenshot: q('#rp-task-shot').value } });
+    });
+    view.querySelectorAll('[data-rp-assign]').forEach((s) => s.onchange = () => rpSend(rpConn, { type: 'action', action: 'assignTask', taskId: s.dataset.rpAssign, memberId: s.value }));
+    view.querySelectorAll('[data-rp-complete]').forEach((b) => b.onclick = () => rpSend(rpConn, { type: 'action', action: 'completeTask', taskId: b.dataset.rpComplete }));
+    view.querySelectorAll('[data-rp-delete]').forEach((b) => b.onclick = () => rpSend(rpConn, { type: 'action', action: 'deleteTask', taskId: b.dataset.rpDelete }));
+    view.querySelectorAll('[data-rp-shotselect]').forEach((s) => s.onchange = () => rpSend(rpConn, { type: 'action', action: 'attachScreenshot', taskId: s.dataset.rpShotselect, screenshot: s.value }));
+  }
+  view.querySelectorAll('[data-rp-shot]').forEach((b) => b.onclick = () => api.gallery.reveal(b.dataset.rpShot));
+}
 
 // ---------------------------------------------------------------------------
 // Navigation & Start
@@ -1441,7 +1914,9 @@ pages.about = {
 
 const NAV = [
   ['', ['start', 'profiles', 'mods', 'saves']],
-  ['Werkzeuge', ['log', 'calc', 'status']],
+  ['Community', ['rp']],
+  ['Werkzeuge', ['companion', 'log', 'calc', 'status']],
+  ['Medien', ['screenshots']],
   ['System', ['settings', 'about']]
 ];
 
@@ -1451,12 +1926,14 @@ function buildNav() {
       ([label, keys]) =>
         (label ? `<div class="nav-label">${label}</div>` : '') +
         keys.map((k) => `<button class="nav-item" data-page="${k}">${pages[k].icon}<span>${pages[k].title}</span></button>`).join('')
-    ).join('') + '<div class="nav-spacer"></div><div class="nav-foot">Version 1.0.0 · MIT</div>';
+    ).join('') + '<div class="nav-spacer"></div><div class="nav-foot">Version 1.0.0-beta · MIT</div>';
   nav.querySelectorAll('[data-page]').forEach((b) => (b.onclick = () => go(b.dataset.page)));
 }
 
 function go(p) {
+  if (p !== 'companion' && window._toolMacroHandler) { document.removeEventListener('keydown', window._toolMacroHandler); window._toolMacroHandler = null; }
   clearTimers();
+  if (p !== 'rp' && rpSaveSyncTimer) { clearInterval(rpSaveSyncTimer); rpSaveSyncTimer = null; }
   page = p;
   nav.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.page === p));
   document.querySelector('.content').scrollTop = 0;

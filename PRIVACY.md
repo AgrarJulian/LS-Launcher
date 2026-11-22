@@ -1,53 +1,26 @@
-# Datenschutzbestimmungen – LS25 Launcher
+# Datenschutzbestimmungen – Agri Nexus
 
-Stand: 2. November 2026
+Stand: 22. November 2026
 
-Der LS25 Launcher ist ein freies Open-Source-Projekt (MIT-Lizenz) und ein inoffizielles Community-Werkzeug. Er steht in keiner Verbindung mit der GIANTS Software GmbH.
-
-## Kurzfassung
-
-**Der LS25 Launcher erhebt, speichert und übermittelt keine personenbezogenen Daten an den Entwickler oder an Dritte.** Es gibt keine Konten, kein Tracking, keine Telemetrie, keine Werbung und keine Absturzberichte.
+Agri Nexus ist ein inoffizielles Open-Source-Community-Werkzeug und steht in keiner Verbindung zur GIANTS Software GmbH.
 
 ## Lokal gespeicherte Daten
 
-Alle Daten bleiben auf deinem Computer. Der Launcher speichert lediglich seine Einstellungen in einer Konfigurationsdatei im Anwendungsdaten-Ordner deines Benutzerkontos (`%APPDATA%\ls25-launcher\config.json`):
+Einstellungen und Hof-Profile werden lokal im Anwendungsdatenordner gespeichert. Dazu gehören Pfade, Profilnamen, Notizen, Startoptionen, Mod-Zuweisungen und ausgewählte Savegames. Backups und Screenshots bleiben in den von dir festgelegten lokalen Ordnern.
 
-- Pfade zur Spiel-Installation, zum Profil-Ordner und zum Backup-Ordner
-- Hof-Profile (Name, Hofname, Notizen, Startoptionen)
-- Eigene Server-Einträge (Name, Host, Port, optionale Statistik-Adresse) für die Statusprüfung
-- Einstellungen der Hof-Profile, inkl. Mod-Ordner und zugeordnetem Savegame
-- Launcher-Einstellungen
-
-Backups deiner Spielstände werden als ZIP-Dateien in dem Ordner abgelegt, den du in den Einstellungen festlegst. Du kannst alle Daten jederzeit löschen, indem du die genannte Konfigurationsdatei und den Backup-Ordner entfernst.
-
-## Zugriff auf Dateien
-
-Der Launcher liest und verändert nur Dateien, die für seine Funktionen nötig sind: die `gameSettings.xml` (Mod-Ordner-Eintrag; vorher wird eine Kopie `gameSettings.xml.ls25launcher.bak` angelegt), den Mod-Ordner (Mods werden zum Deaktivieren in `.bak` umbenannt), die Savegame-Ordner, die Log-Datei und den Shader-Cache im konfigurierten Profil-Ordner sowie den Backup-Ordner. Gelöschte Mods und Backups werden in den Papierkorb verschoben.
+Agri Nexus liest und verändert für seine Funktionen `gameSettings.xml`, Mods, Savegames, Spiel-Logs und Shader-Caches. Vor Änderungen an `gameSettings.xml` legt es eine Sicherungskopie an.
+Savegame-Werte können im Live-&-Werkstatt-Tab bearbeitet werden. Vorher wird der komplette Slot als ZIP gesichert. Controller- und Grafik-Snapshots sowie Screenshot-Kontextdateien werden lokal gespeichert.
 
 ## Netzwerkverbindungen
 
-Der Launcher verbindet sich nur dann mit dem Internet, wenn du die jeweilige Funktion benutzt:
+- Server- und ModHub-Prüfungen rufen die jeweiligen GIANTS- bzw. Farming Simulator-Dienste auf. Für die ModHub-Suche werden Mod-Titel und Versionen gesendet.
+- P2P-Sitzungen und RP-Lobbys verwenden PeerJS zur WebRTC-Signalisierung. Signalisierungsserver und Verbindungspartner können Verbindungsmetadaten und IP-Adressen sehen. Teilnehmer teilen in der Lobby ihren Spielernamen, Farm-/Aufgabenstatus und die vom Host gesetzten Serverdaten. Ausgewählte Mods sowie beim Profiltransfer das aktive Profil und zugeordnete Savegame werden direkt zwischen den Geräten übertragen.
+- Im RP-Tab werden virtuelle Kontostände, Arbeitszeiten, Hof-/Maschinenangebote, Lieferscheine, Feldnotizen und Event-Anmeldungen zwischen den Lobbygeräten geteilt. Eine vom Admin eingetragene HTTPS-Quelle für `careerSavegame.xml` wird minütlich abgefragt, solange die RP-Ansicht geöffnet ist; die Antwort wird lokal unter dem Profilordner im Unterordner `agri-nexus-admin` abgelegt.
+- Discord Rich Presence sendet den Spielstatus, den aktiven Profilnamen und die Anzahl der aktiven Mods an Discord, wenn Discord läuft und die RPC-Verbindung verfügbar ist.
+- Der optionale Live-Begleiter startet nur auf Anforderung einen HTTP-Server im lokalen Netzwerk. Geräte mit dem zufälligen Link können Profil- und Savegame-Informationen sehen. Ein kompatibles Telemetrie-Mod kann zusätzliche JSON-Werte an den angezeigten `/api/telemetry`-Endpunkt senden; diese Werte bleiben nur bis zum Beenden des Launchers im Arbeitsspeicher.
 
-- **Server Status:** per HTTPS mit `www.giants-software.com` und `www.farming-simulator.com`, um deren Erreichbarkeit zu messen.
-- **Eigene Server:** Für Server, die du selbst einträgst, wird der Spielport per TCP geprüft und, falls du eine Statistik-Adresse angegeben hast, diese Adresse per HTTP(S) abgerufen (Spieleranzahl, Map, Spielernamen). Die Adresse kann einen Zugangscode enthalten; sie wird nur lokal in deiner Konfigurationsdatei gespeichert.
-- **ModHub-Prüfung:** Beim Klick auf „ModHub prüfen“ werden die Titel deiner installierten Mods an `www.farming-simulator.com` gesendet, um nach neueren Versionen zu suchen. Es werden keine Dateien hochgeladen.
-
-Dabei werden keine weiteren Daten über dich oder deinen Computer gesendet. Wie bei jeder Internetverbindung sehen die angefragten Server deine IP-Adresse; für deren Verarbeitung gelten die Datenschutzbestimmungen der jeweiligen Betreiber.
-
-Links zu GitHub werden nur geöffnet, wenn du sie anklickst, und in deinem Standardbrowser angezeigt.
-
-## Weitergabe an Dritte
-
-Es findet keine Weitergabe von Daten statt.
-
-## Deine Rechte
-
-Da der Launcher keine Daten über dich erhebt, die der Entwickler einsehen könnte, gibt es keine Daten, die auf Anfrage ausgekunftet oder gelöscht werden müssten. Alle lokalen Daten kannst du selbst einsehen und löschen.
-
-## Änderungen
-
-Änderungen dieser Datenschutzbestimmungen werden in diesem Repository veröffentlicht: <https://github.com/AgrarJulian/LS-Launcher>
+Es gibt keine Launcher-Konten, Werbung oder automatische Übermittlung eigener Telemetrie. Der optionale Companion nimmt Telemetrie ausschließlich lokal entgegen. Netzwerkdienste Dritter verarbeiten Verbindungen gemäß ihren eigenen Datenschutzbestimmungen.
 
 ## Kontakt
 
-Fragen und Feedback: <https://github.com/AgrarJulian/LS-Launcher/issues>
+Quellcode und Feedback: <https://github.com/AgrarJulian/LS-Launcher>
