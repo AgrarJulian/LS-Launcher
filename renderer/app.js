@@ -1575,6 +1575,22 @@ pages.settings = {
 // Über uns
 // ---------------------------------------------------------------------------
 
+pages.partners = {
+  title: 'Partner', icon: I.cloud,
+  async render(force = false) {
+    const data = await api.partners.list(force);
+    const cards = (data.items || []).map((p) => `<article class="card partner-card"><div class="partner-head">${p.logo ? `<img class="partner-logo" loading="lazy" referrerpolicy="no-referrer" data-partner-logo src="${esc(p.logo)}" alt="Logo ${esc(p.title)}">` : `<div class="partner-logo partner-placeholder">${esc(initials(p.title))}</div>`}<div class="grow"><span class="tag">Partner</span><h3>${esc(p.title)}</h3></div></div><p>${esc(p.description || 'Partner der Agri-Nexus-Community.')}</p><button class="btn primary" data-partner-url="${esc(p.url)}">Website öffnen</button></article>`).join('');
+    const updated = data.updatedAt ? fmtDate(data.updatedAt) : 'noch nicht synchronisiert';
+    view.innerHTML = head('Agri Nexus Partner', 'Unsere Partner mit Logo, Beschreibung und direktem Link.', `<button class="btn" id="partner-refresh">${I.refresh}Liste aktualisieren</button><button class="btn primary" id="partner-edit">Partnerliste verwalten</button>`) +
+      `<div class="card partner-admin-note"><b>Nur du und von dir autorisierte GitHub-Mitwirkende können die Partnerliste ändern</b><p>Die App ist für alle anderen Nutzer schreibgeschützt. Nur Personen, denen du Schreibrechte an deinem Repository gibst, können Partner hinzufügen oder ändern. Änderungen an <span class="mono">partners.json</span> erscheinen hier automatisch – ohne App-Update. Die Liste wird mindestens alle 15 Minuten neu geprüft; „Liste aktualisieren“ lädt sofort.</p><small>Letzter erfolgreicher Abruf: ${esc(updated)}${data.stale ? ` · Offline/Fehler: ${esc(data.error || '')} · zeige gespeicherte Liste` : ''}</small></div>
+      <div class="partner-grid">${cards || `<div class="card">${emptyBox('Noch keine Partner eingetragen', 'Füge deine ersten Partner über „Partnerliste verwalten“ hinzu. Die App lädt neue Einträge danach automatisch.')}</div>`}</div>`;
+    document.getElementById('partner-refresh').onclick = () => pages.partners.render(true);
+    document.getElementById('partner-edit').onclick = () => api.partners.open('https://github.com/AgrarJulian/LS-Launcher/edit/main/partners.json');
+    view.querySelectorAll('[data-partner-url]').forEach((b) => b.onclick = () => api.partners.open(b.dataset.partnerUrl));
+    view.querySelectorAll('[data-partner-logo]').forEach((img) => { img.onerror = () => { const fallback = document.createElement('div'); fallback.className = 'partner-logo partner-placeholder'; fallback.textContent = initials(img.alt.replace(/^Logo\s+/, '')); img.replaceWith(fallback); }; });
+  }
+};
+
 pages.about = {
   title: 'Über uns',
   icon: I.info,
@@ -1582,7 +1598,7 @@ pages.about = {
     const link = (u) => `<a data-ext="https://${u}">${u}</a>`;
     view.innerHTML = `<div class="card about">
       <div class="about-head"><img src="../assets/icon.png" alt="">
-        <div><h2>Agri Nexus v1.0.0-beta</h2><p>Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25</p></div></div>
+        <div><h2>Agri Nexus v1.0.1-beta</h2><p>Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25</p></div></div>
       <hr>
       <section><h3>Projekt &amp; Community</h3>
         <ul>
@@ -1914,7 +1930,7 @@ async function renderRP() {
 
 const NAV = [
   ['', ['start', 'profiles', 'mods', 'saves']],
-  ['Community', ['rp']],
+  ['Community', ['rp', 'partners']],
   ['Werkzeuge', ['companion', 'log', 'calc', 'status']],
   ['Medien', ['screenshots']],
   ['System', ['settings', 'about']]
@@ -1926,7 +1942,7 @@ function buildNav() {
       ([label, keys]) =>
         (label ? `<div class="nav-label">${label}</div>` : '') +
         keys.map((k) => `<button class="nav-item" data-page="${k}">${pages[k].icon}<span>${pages[k].title}</span></button>`).join('')
-    ).join('') + '<div class="nav-spacer"></div><div class="nav-foot">Version 1.0.0-beta · MIT</div>';
+    ).join('') + '<div class="nav-spacer"></div><div class="nav-foot">Version 1.0.1-beta · MIT</div>';
   nav.querySelectorAll('[data-page]').forEach((b) => (b.onclick = () => go(b.dataset.page)));
 }
 

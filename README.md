@@ -1,4 +1,4 @@
-# Agri Nexus v1.0.0-beta
+# Agri Nexus v1.0.1-beta
 
 Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25.
 
@@ -25,10 +25,29 @@ Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25.
 - **Server Status** – GIANTS-Dienste und eigene Server mit Spieleranzahl, Map und Spielernamen (über die Statistik-Adresse des Dedicated Servers)
 - **Screenshots** – Galerie für Bilder aus dem Spiel-Profilordner, inklusive Kopieren, Teilen, Kontext-Tags und Vorher/Nachher-Vergleich
 - Discord Rich Presence mit Profilname, aktivem Spielstatus und Mod-Anzahl
+- **Partner** – Partnerverzeichnis lädt `partners.json` kostenlos von GitHub, mit lokalem Offline-Cache; Änderungen brauchen kein neues App-Release. Bearbeiten kann nur, wer Schreibrechte am Repository hat.
 - **RP & Party Network** – WebRTC-Lobbys, Whitelist/Regelbestätigung, Höfe/Rollen, virtuelle Konten, Fuhrparkmiete, LU-Preise, Feldnotizen, Lieferscheine und Event-/Schichtverwaltung
 - **Admin-Savegame-Sync** – ruft eine konfigurierte HTTPS-Quelle minütlich ab, solange die RP-Ansicht geöffnet ist
 - **Einstellungen** – Spiel-, Profil-, Backup- und Mods-Pfad; der Mods-Pfad wird in `gameSettings.xml` übernommen
 - **Über uns**
+
+## Partnerliste aktualisieren
+
+Die zentrale Liste liegt in [`partners.json`](https://github.com/AgrarJulian/LS-Launcher/edit/main/partners.json). Füge einen Eintrag in `partners` ein und speichere die Datei auf `main`. Die App prüft die öffentliche GitHub-Datei beim Öffnen des Partner-Tabs und danach mindestens alle 15 Minuten; der Aktualisieren-Knopf lädt sofort. Offline verwendet die App den zuletzt gespeicherten Cache.
+
+Ein Eintrag hat dieses Format:
+
+```json
+{
+  "id": "partner-id",
+  "title": "Partnername",
+  "description": "Kurze Beschreibung",
+  "url": "https://example.com/",
+  "logo": "https://example.com/logo.png"
+}
+```
+
+`logo` darf leer sein. Links müssen HTTPS-Adressen sein. GitHub-Schreibrechte schützen die zentrale Liste; die App selbst bietet anderen Nutzern keine Bearbeitungsfunktion.
 
 ## Entwicklung
 
@@ -42,7 +61,7 @@ npm start          # Launcher im Entwicklungsmodus starten
 ## .exe erzeugen
 
 ```bash
-npm run build            # portable .exe  ->  dist/Agri-Nexus-1.0.0-beta-x64.exe
+npm run build            # portable .exe  ->  dist/Agri-Nexus-1.0.1-beta-x64.exe
 npm run build:installer  # Setup-Installer (NSIS)
 ```
 

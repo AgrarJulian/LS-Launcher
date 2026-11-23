@@ -294,6 +294,15 @@ textarea.input { resize: vertical; min-height: 70px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .toolbar select.input { width: auto; max-width: 200px; }
 .mod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+.partner-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-top: 14px; }
+.partner-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.partner-head { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.partner-head h3 { margin: 5px 0 0; overflow-wrap: anywhere; }
+.partner-logo { width: 72px; height: 72px; flex: none; object-fit: contain; border-radius: 14px; background: rgba(0,0,0,.2); border: 1px solid var(--stroke); padding: 7px; }
+.partner-placeholder { display: grid; place-items: center; font: 700 22px var(--font-display); color: var(--accent-hi); }
+.partner-card p { color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.partner-admin-note { border-left: 3px solid var(--accent); }
+.partner-admin-note p { color: var(--text-2); margin: 8px 0; }
 .mod { position: relative; display: flex; flex-direction: column; gap: 12px; padding: 16px; cursor: pointer; transition: border-color .15s, transform .15s, background .15s; }
 .mod:hover { border-color: rgba(255,255,255,.2); transform: translateY(-1px); }
 .mod.off { opacity: .55; }

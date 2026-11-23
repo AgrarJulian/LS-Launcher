@@ -776,6 +776,51 @@ ipcMain.handle('config:set', (_e, cfg) => {
 ipcMain.handle('game:detect', () => detectGame());
 ipcMain.handle('app:info', () => ({ version: app.getVersion(), platform: process.platform, userData: app.getPath('userData') }));
 
+const PARTNERS_URL = 'https://raw.githubusercontent.com/AgrarJulian/LS-Launcher/main/partners.json';
+const partnerCacheFile = () => path.join(app.getPath('userData'), 'partners-cache.json');
+let partnerRemoteCache = { fetchedAt: 0, items: [] };
+function cleanPartnerList(data, source) {
+  if (!data || !Array.isArray(data.partners)) return [];
+  return data.partners.slice(0, 300).flatMap((raw) => {
+    if (!raw || typeof raw !== 'object') return [];
+    const title = str(raw.title, 80).trim(), description = str(raw.description, 800).trim();
+    let url = '', logo = '';
+    try { const parsed = new URL(String(raw.url || '')); if (parsed.protocol !== 'https:') return []; url = parsed.toString(); } catch { return []; }
+    if (raw.logo) { try { const parsed = new URL(String(raw.logo)); if (parsed.protocol === 'https:') logo = parsed.toString(); } catch {} }
+    if (!title) return [];
+    return [{ id: str(raw.id, 100) || crypto.randomUUID(), title, description, url, logo, source }];
+  });
+}
+function readPartnerJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } }
+ipcMain.handle('partners:list', async (_event, force = false) => {
+  const now = Date.now();
+  if (!partnerRemoteCache.fetchedAt) {
+    const saved = readPartnerJson(partnerCacheFile());
+    if (saved && Array.isArray(saved.partners)) partnerRemoteCache = { fetchedAt: Number(saved.fetchedAt) || 0, items: cleanPartnerList(saved, 'github') };
+  }
+  let refreshed = false, error = '';
+  if (force || now - partnerRemoteCache.fetchedAt > 15 * 60 * 1000) {
+    try {
+      const response = await netlib.httpGet(`${PARTNERS_URL}?v=${Math.floor(now / 60000)}`, { timeout: 8000, maxBytes: 256 * 1024, headers: { 'Cache-Control': 'no-cache' } });
+      if (response.status !== 200) throw new Error(`GitHub antwortet mit HTTP ${response.status}.`);
+      const parsed = JSON.parse(response.body), items = cleanPartnerList(parsed, 'github');
+      if (!Array.isArray(parsed.partners)) throw new Error('Partnerdatei hat ein ungültiges Format.');
+      partnerRemoteCache = { fetchedAt: now, items };
+      fs.mkdirSync(path.dirname(partnerCacheFile()), { recursive: true });
+      fs.writeFileSync(partnerCacheFile(), JSON.stringify({ version: 1, fetchedAt: now, partners: items }, null, 2), 'utf8');
+      refreshed = true;
+    } catch (err) { error = err.message; }
+  }
+  if (!partnerRemoteCache.fetchedAt && !partnerRemoteCache.items.length) {
+    const bundled = readPartnerJson(path.join(__dirname, 'partners.json'));
+    partnerRemoteCache.items = cleanPartnerList(bundled, 'github');
+  }
+  return { ok: true, items: partnerRemoteCache.items, remoteCount: partnerRemoteCache.items.length, updatedAt: partnerRemoteCache.fetchedAt || 0, refreshed, stale: !!error, error };
+});
+ipcMain.handle('partners:open', (_event, url) => {
+  try { const parsed = new URL(String(url)); if (parsed.protocol !== 'https:') return false; shell.openExternal(parsed.toString()); return true; } catch { return false; }
+});
+
 ipcMain.handle('modfolder:info', () => {
   const cfg = loadConfig();
   const r = resolveModsDir(cfg);

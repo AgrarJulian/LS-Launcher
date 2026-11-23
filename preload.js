@@ -69,6 +69,10 @@ contextBridge.exposeInMainWorld('launcher', {
   status: {
     check: () => invoke('status:check')
   },
+  partners: {
+    list: (force) => invoke('partners:list', !!force),
+    open: (url) => invoke('partners:open', url)
+  },
   gallery: {
     list: () => invoke('gallery:list'),
     image: (file) => invoke('gallery:image', file),
