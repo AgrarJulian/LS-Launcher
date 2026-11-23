@@ -1,4 +1,12 @@
 {
   "version": 1,
-  "partners": []
+  "partners": [
+    {
+      "id": "mein-partner",
+      "title": "Partnername",
+      "description": "Kurze Beschreibung",
+      "url": "https://example.com/",
+      "logo": "https://example.com/logo.png"
+    }
+  ]
 }
