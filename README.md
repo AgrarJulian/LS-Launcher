@@ -2,7 +2,7 @@
 
 <img src="assets/icon.png" alt="Agri Nexus Logo" width="110" />
 
-# Agri Nexus v1.0.1-beta
+# Agri Nexus v1.0.2-beta
 
 **Free, open-source management tool, mod manager, and companion app for Farming Simulator 25.**
 
@@ -17,7 +17,7 @@
 
 ## 📥 Download & Installation
 
-1. Download the latest version (`Agri-Nexus-1.0.1-beta-x64.exe`) from **[Releases](https://github.com/AgrarJulian/LS-Launcher/releases)**.
+1. Download the latest version (`Agri-Nexus-1.0.2-beta-x64.exe`) from **[Releases](https://github.com/AgrarJulian/LS-Launcher/releases)**.
 2. Run the `.exe` file (portable version – no installation required).
 3. Select your FS25 game path and your desired mod folder in **Settings**.
 

@@ -799,9 +799,9 @@ ipcMain.handle('partners:list', async (_event, force = false) => {
     if (saved && Array.isArray(saved.partners)) partnerRemoteCache = { fetchedAt: Number(saved.fetchedAt) || 0, items: cleanPartnerList(saved, 'github') };
   }
   let refreshed = false, error = '';
-  if (force || now - partnerRemoteCache.fetchedAt > 15 * 60 * 1000) {
+  if (force || now - partnerRemoteCache.fetchedAt >= 2 * 60 * 1000) {
     try {
-      const response = await netlib.httpGet(`${PARTNERS_URL}?v=${Math.floor(now / 60000)}`, { timeout: 8000, maxBytes: 256 * 1024, headers: { 'Cache-Control': 'no-cache' } });
+      const response = await netlib.httpGet(`${PARTNERS_URL}?v=${now}`, { timeout: 8000, maxBytes: 256 * 1024, headers: { 'Cache-Control': 'no-cache' } });
       if (response.status !== 200) throw new Error(`GitHub antwortet mit HTTP ${response.status}.`);
       const parsed = JSON.parse(response.body), items = cleanPartnerList(parsed, 'github');
       if (!Array.isArray(parsed.partners)) throw new Error('Partnerdatei hat ein ungültiges Format.');
