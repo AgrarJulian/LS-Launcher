@@ -1,83 +1,93 @@
+<div align="center">
+
+<img src="assets/icon.png" alt="Agri Nexus Logo" width="110" />
+
 # Agri Nexus v1.0.1-beta
 
-Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25.
+**Free, open-source management tool, mod manager, and companion app for Farming Simulator 25.**
 
-![Logo](assets/icon.png)
+![Downloads](https://img.shields.io/github/downloads/AgrarJulian/LS-Launcher/total?style=for-the-badge&color=84cc16)
+![Release](https://img.shields.io/github/v/release/AgrarJulian/LS-Launcher?include_prereleases&style=for-the-badge&color=65a30d)
+![License](https://img.shields.io/github/license/AgrarJulian/LS-Launcher?style=for-the-badge&color=3f6212)
+![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue?style=for-the-badge)
 
-## Funktionen
+</div>
 
-- **Starten** – Start-Button, aktives Profil, Schnelleinstellungen (Dev Mode, Shader Cache leeren, Intro überspringen, Auto-Backup vor dem Start)
-- **Hof Profile** – pro Profil eigener Mod-Ordner (wird in die `gameSettings.xml` eingetragen), fest zugeordnetes Savegame, Mod-Auswahl und Startoptionen
-- **Mods & Assets** – Mod-Regal mit Icon, Name, Version, Modder und Fehlern je Mod; Mod-Ordner wird aus der `gameSettings.xml` gelesen
-  - P2P-Sync für private ZIP-Mods per Raumcode, SHA-256-Abgleich und Fortschritt; einzelne Mods oder alle fehlenden ZIP-Mods auf einmal
-  - Mod-Speicherübersicht mit Warnung für besonders große Dateien
-  - Konflikt-Checker (Skript-Überschneidungen, doppelte Mods)
-  - 1-Klick-Deaktivierung per `.bak`
-  - ModHub-Versionsabgleich (experimentell)
-  - Drag-&-Drop-Installer für `.zip`-Mods
-- **Saves & Backups** – manuelle und automatische Backups, Liste mit Datum/Uhrzeit, 1-Klick-Wiederherstellung (mit Sicherheitskopie)
-  - Savegame-Editor für numerische XML-Werte mit vollständigem Vorher-Backup und XML-Strukturdiagnose
-- **Live & Werkstatt** – Companion-Webseite fürs lokale WLAN mit Savegame-/Hofdaten und optionalem Telemetrie-POST-Endpunkt
-  - Dev-Makro-Deck, Controllerbelegungs-Snapshots und mehrere benannte `gameSettings.xml`-Grafik-Snapshots pro Profil
-  - Mod-Bloat-Scanner für große ZIPs und Assets, Ladezeit-Hinweise aus `log.txt` sowie Modpack-Manifest-Export
-- **Log-Analyse** – liest die Spiel-Log-Datei, übersetzt Fehler/Warnungen und ordnet sie Mods zu, optional live
-- **Rechner** – Ertrag & Gewinn, Futterbedarf, Mischration, Arbeitszeit
-- **Server Status** – GIANTS-Dienste und eigene Server mit Spieleranzahl, Map und Spielernamen (über die Statistik-Adresse des Dedicated Servers)
-- **Screenshots** – Galerie für Bilder aus dem Spiel-Profilordner, inklusive Kopieren, Teilen, Kontext-Tags und Vorher/Nachher-Vergleich
-- Discord Rich Presence mit Profilname, aktivem Spielstatus und Mod-Anzahl
-- **Partner** – Partnerverzeichnis lädt `partners.json` kostenlos von GitHub, mit lokalem Offline-Cache; Änderungen brauchen kein neues App-Release. Bearbeiten kann nur, wer Schreibrechte am Repository hat.
-- **RP & Party Network** – WebRTC-Lobbys, Whitelist/Regelbestätigung, Höfe/Rollen, virtuelle Konten, Fuhrparkmiete, LU-Preise, Feldnotizen, Lieferscheine und Event-/Schichtverwaltung
-- **Admin-Savegame-Sync** – ruft eine konfigurierte HTTPS-Quelle minütlich ab, solange die RP-Ansicht geöffnet ist
-- **Einstellungen** – Spiel-, Profil-, Backup- und Mods-Pfad; der Mods-Pfad wird in `gameSettings.xml` übernommen
-- **Über uns**
+---
 
-## Partnerliste aktualisieren
+## 📥 Download & Installation
 
-Die zentrale Liste liegt in [`partners.json`](https://github.com/AgrarJulian/LS-Launcher/edit/main/partners.json). Füge einen Eintrag in `partners` ein und speichere die Datei auf `main`. Die App prüft die öffentliche GitHub-Datei beim Öffnen des Partner-Tabs und danach mindestens alle 15 Minuten; der Aktualisieren-Knopf lädt sofort. Offline verwendet die App den zuletzt gespeicherten Cache.
+1. Download the latest version (`Agri-Nexus-1.0.1-beta-x64.exe`) from **[Releases](https://github.com/AgrarJulian/LS-Launcher/releases)**.
+2. Run the `.exe` file (portable version – no installation required).
+3. Select your FS25 game path and your desired mod folder in **Settings**.
 
-Ein Eintrag hat dieses Format:
+> **Windows SmartScreen Note:** Because the `.exe` is currently not digitally signed, Windows may display a security warning on first launch. Simply click **"More info"** and then **"Run anyway"**.
+
+---
+
+## ✨ Features
+
+### 🚀 Launcher & Profiles
+- **Launch:** Instant game launch with your active profile and quick toggles (*Dev Mode*, *Clear Shader Cache*, *Skip Intro*, *Auto-Backup before launch*).
+- **Farm Profiles:** Dedicated mod folder per profile (automatically written to `gameSettings.xml`), assigned savegame, custom mod selection, and launch options.
+- **Discord Rich Presence:** Displays your active farm profile, live game status, and loaded mod count on Discord.
+
+### 📦 Mods & Assets
+- **Mod Shelf:** Overview showing icon, name, version, author, and error status per mod (mod folder path is read directly from `gameSettings.xml`).
+- **P2P Mod Sync:** Sync private `.zip` mods directly via room code with SHA-256 verification and progress tracking (individual mods or all missing mods at once).
+- **Analysis & Management:** Conflict checker (script overlaps & duplicates), storage overview with warnings for oversized files, ModHub version check *(experimental)*, drag-and-drop installer for `.zip` mods, and 1-click deactivation via `.bak`.
+
+### 💾 Saves, Backups & Tools
+- **Saves & Backups:** Manual and automatic savegame backups with timestamps, 1-click restore (with safety copy), plus a **Savegame Editor** for numeric XML values with full pre-edit backups and XML structure diagnostics.
+- **Live & Workshop:** Local Wi-Fi companion webpage displaying live savegame/farm data and an optional telemetry POST endpoint. Includes a Dev Macro Deck, controller binding snapshots, named graphics presets (`gameSettings.xml`), mod bloat scanner, load-time analysis (`log.txt`), and modpack manifest export.
+- **Log Analyzer:** Reads `log.txt` (optionally live), translates errors and warnings into plain language, and links them directly to the responsible mods.
+- **FS Calculators:** Built-in calculators for yield & profit, feed requirements, Total Mixed Ration (TMR), and field work time.
+- **Screenshots:** Gallery for images from your game profile folder, including copy/share options, context tags, and before/after comparison.
+
+### 🌐 Multiplayer, Server & RP Network
+- **Server Status:** Status monitor for GIANTS services and custom dedicated servers including player count, active map, and player names.
+- **RP & Party Network:** WebRTC lobbies with whitelist/rule confirmation, farms & roles, virtual accounts, fleet rentals, contractor rates, field notes, delivery notes, and event/shift management.
+- **Admin Savegame Sync:** Polls a configured HTTPS source every minute while the RP view is open.
+- **Partner Directory:** Displays partner logos, descriptions, and links. The list is fetched from the public GitHub `partners.json` file and refreshes automatically without an app update. The app is read-only; only people with repository write access can change the shared directory.
+
+---
+
+## ⚙️ Launch Options
+
+| Option | Launch Parameter / Action |
+| :--- | :--- |
+| **Dev Mode** | `-cheats -console` |
+| **Skip Intro** | `-skipStartVideos` |
+| **Clear Shader Cache** | Deletes `shader_cache` in the profile folder before launch |
+| **Direct Savegame Load** | `-autoStartSavegameId <No>` *(experimental)* |
+
+---
+
+## 🛠️ Development & Build
+
+**Prerequisite:** [Node.js](https://nodejs.org) 20 or newer.
+
+```bash
+# Install dependencies
+npm install
+
+# Start the launcher in development mode
+npm start
+
+## Updating the Partner Directory
+
+The shared directory is stored in [`partners.json`](https://github.com/AgrarJulian/LS-Launcher/edit/main/partners.json). Add entries to the `partners` array and commit the change to `main`. Only repository collaborators with write permission can edit it; the app itself has no partner-add form. The app refreshes the list when opening the tab and at least every 15 minutes, with a manual refresh option and a local cache for offline use.
+
+Example entry:
 
 ```json
 {
   "id": "partner-id",
-  "title": "Partnername",
-  "description": "Kurze Beschreibung",
+  "title": "Partner name",
+  "description": "Short description",
   "url": "https://example.com/",
   "logo": "https://example.com/logo.png"
 }
 ```
 
-`logo` darf leer sein. Links müssen HTTPS-Adressen sein. GitHub-Schreibrechte schützen die zentrale Liste; die App selbst bietet anderen Nutzern keine Bearbeitungsfunktion.
-
-## Entwicklung
-
-Voraussetzung: [Node.js](https://nodejs.org) 20 oder neuer.
-
-```bash
-npm install
-npm start          # Launcher im Entwicklungsmodus starten
-```
-
-## .exe erzeugen
-
-```bash
-npm run build            # portable .exe  ->  dist/Agri-Nexus-1.0.1-beta-x64.exe
-npm run build:installer  # Setup-Installer (NSIS)
-```
-
-Der Build sollte unter Windows ausgeführt werden. Dort wird auch das Icon in die .exe eingebettet.
-
-## Startoptionen
-
-| Option | Startparameter |
-| --- | --- |
-| Dev Mode | `-cheats -console` |
-| Intro überspringen | `-skipStartVideos` |
-| Shader Cache leeren | löscht `shader_cache` im Profil-Ordner vor dem Start |
-| Savegame direkt laden | `-autoStartSavegameId <Nr>` (experimentell) |
-
-## Lizenz
-
-[MIT](LICENSE) · Datenschutz: [PRIVACY.md](PRIVACY.md)
-
-Agri Nexus ist ein inoffizielles Community-Projekt und steht in keinerlei Verbindung mit der GIANTS Software GmbH. „Landwirtschafts-Simulator“ und „GIANTS Software“ sind eingetragene Marken der GIANTS Software GmbH.
+Logo is optional; provided links must use HTTPS.
