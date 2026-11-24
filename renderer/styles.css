@@ -270,6 +270,8 @@ textarea.input { resize: vertical; min-height: 70px; }
 .note { color: var(--text-3); font-size: 12.5px; margin-top: 14px; }
 
 .preference-select { width: min(260px, 42%); flex: none; }
+.startup-error { margin: 28px; max-width: 820px; }
+.startup-error p { margin-top: 10px; color: var(--text-2); user-select: text; overflow-wrap: anywhere; }
 
 body[data-theme="light"] {
   --accent: #5d8f14;

@@ -1,6 +1,6 @@
 {
   "name": "agri-nexus",
-  "version": "1.0.4-beta",
+  "version": "1.0.5-beta",
   "description": "Agri Nexus – Verwaltung für den Landwirtschafts-Simulator 25",
   "main": "main.js",
   "author": "AgrarJulian",

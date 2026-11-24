@@ -17,7 +17,7 @@
 
 ## 📥 Download & Installation
 
-1. Download the latest version (`Agri-Nexus-1.0.4-beta-x64.exe`) from **[Releases](https://github.com/AgrarJulian/LS-Launcher/releases)**.
+1. Download the latest version (`Agri-Nexus-1.0.5-beta-x64.exe`) from **[Releases](https://github.com/AgrarJulian/LS-Launcher/releases)**.
 2. Run the setup and follow the installation steps.
 3. Select your FS25 game path and your desired mod folder in **Settings**.
 4. Later versions download from GitHub and can be installed from the green in-app update banner.

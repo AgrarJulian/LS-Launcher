@@ -5,10 +5,25 @@ const view = document.getElementById('view');
 const nav = document.getElementById('nav');
 const q = (selector) => document.querySelector(selector);
 
+nav.textContent = 'Agri Nexus startet …';
+view.textContent = 'Agri Nexus wird geladen …';
+function showRendererError(error) {
+  const card = document.createElement('section');
+  card.className = 'card startup-error';
+  const title = document.createElement('h1');
+  title.textContent = 'Agri Nexus konnte die Oberfläche nicht laden.';
+  const detail = document.createElement('p');
+  detail.textContent = String(error && (error.message || error.reason) || error || 'Unbekannter Startfehler');
+  card.append(title, detail);
+  view.replaceChildren(card);
+}
+window.addEventListener('error', (event) => { if (!view.querySelector('.card')) showRendererError(event.error || event.message); });
+
 let cfg = null;
 let page = 'start';
 let timers = [];
 let partnerRefreshTimer = null;
+let startRenderToken = 0;
 let uiLanguage = 'de';
 
 const translations = {
@@ -34,6 +49,8 @@ const translations = {
   'Website öffnen': 'Open website', 'Noch keine Partner eingetragen': 'No partners added yet',
   'Füge deine ersten Partner über „Partnerliste verwalten“ hinzu. Die App lädt neue Einträge danach automatisch.': 'Add partners through “Manage partners”. The app loads new entries automatically.',
   'Farming Simulator 25 wird gestartet …': 'Starting Farming Simulator 25 …', 'Spiel starten': 'Launch game', 'Profil aktivieren': 'Activate profile',
+  'Agri Nexus startet …': 'Starting Agri Nexus …', 'Agri Nexus wird geladen …': 'Loading Agri Nexus …',
+  'Agri Nexus konnte die Oberfläche nicht laden.': 'Agri Nexus could not load its interface.',
   'Profil erstellen': 'Create profile', 'Neues Profil': 'New profile', 'Profil löschen': 'Delete profile', 'Profil bearbeiten': 'Edit profile',
   'Mods synchronisieren': 'Sync mods', 'Alle Mods synchronisieren': 'Sync all mods', 'Host Sync Session': 'Host Sync Session',
   'Join Sync Session': 'Join Sync Session', 'Keine Mods gefunden': 'No mods found', 'Keine Spielstände gefunden': 'No savegames found',
@@ -83,15 +100,11 @@ function applyPreferences(preferences = cfg || {}) {
 }
 
 const uiTranslationObserver = new MutationObserver((records) => {
-  const roots = new Set();
   for (const record of records) {
-    if (record.type === 'childList') record.addedNodes.forEach((node) => roots.add(node.nodeType === Node.ELEMENT_NODE ? node : record.target));
-    else if (record.type === 'characterData') roots.add(record.target.parentElement || document.body);
-    else roots.add(record.target);
+    for (const node of record.addedNodes) if (node.nodeType === Node.ELEMENT_NODE) translateTree(node);
   }
-  roots.forEach(translateTree);
 });
-uiTranslationObserver.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['placeholder', 'title', 'aria-label'] });
+uiTranslationObserver.observe(document.body, { childList: true, subtree: true });
 window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
   if (cfg && cfg.theme === 'system') applyPreferences(cfg);
 });
@@ -272,11 +285,12 @@ pages.start = {
   title: 'Starten',
   icon: I.start,
   async render() {
+    const renderToken = ++startRenderToken;
     const p = activeProfile();
     const gameOk = !!cfg.gamePath;
-    const [mods, saves, backups, mf] = await Promise.all([api.mods.list(), api.saves.list(), api.backups.list(), api.modFolderInfo()]);
+    const mf = await api.modFolderInfo();
+    if (renderToken !== startRenderToken || page !== 'start') return;
     const args = [p.skipIntro && '-skipStartVideos', p.devMode && '-cheats -console', p.autoStartSave && p.savegame && '-autoStartSavegameId', p.extraArgs].filter(Boolean).join(' ');
-    const modErrors = mods.ok ? mods.items.filter((m) => m.enabled && m.errors.some((e) => e.sev === 'error')).length : 0;
 
     view.innerHTML =
       head('Starten', 'Bereit für die nächste Ernte?') +
@@ -294,12 +308,12 @@ pages.start = {
             ${gameOk ? '' : '<p class="note" style="margin:0">Lege den Pfad zur FarmingSimulator2025.exe unter <a data-go="settings">Einstellungen</a> fest.</p>'}
           </div>
           <div class="grid g-3">
-            <div class="card stat"><b>${mods.ok ? mods.items.length : '–'}</b><span>Mods im Ordner</span></div>
-            <div class="card stat"><b>${saves.ok ? saves.items.length : '–'}</b><span>Spielstände</span></div>
-            <div class="card stat"><b>${backups.items.length}</b><span>Backups</span></div>
+            <div class="card stat"><b data-home-stat="mods">…</b><span>Mods im Ordner</span></div>
+            <div class="card stat"><b data-home-stat="saves">…</b><span>Spielstände</span></div>
+            <div class="card stat"><b data-home-stat="backups">…</b><span>Backups</span></div>
           </div>
           <div class="banner">${I.folder}<div class="grow"><small>Aktiver Mod-Ordner · ${esc(sourceLabel(mf.source))}</small><span class="path">${esc(mf.dir)}</span></div>
-            ${modErrors ? `<a data-go="mods"><span class="chip bad"><i></i>${modErrors} Mod${modErrors > 1 ? 's' : ''} mit Fehlern</span></a>` : ''}</div>
+            <a data-home-mod-errors hidden></a></div>
         </div>
 
         <div class="stack">
@@ -355,6 +369,25 @@ pages.start = {
         await persist();
       };
     });
+
+    const updateStat = (name, value) => {
+      if (renderToken !== startRenderToken || page !== 'start') return;
+      const el = view.querySelector(`[data-home-stat="${name}"]`);
+      if (el) el.textContent = String(value);
+    };
+    api.mods.list().then((mods) => {
+      if (renderToken !== startRenderToken || page !== 'start') return;
+      updateStat('mods', mods.ok ? mods.items.length : '–');
+      const count = mods.ok ? mods.items.filter((m) => m.enabled && m.errors.some((e) => e.sev === 'error')).length : 0;
+      const badge = view.querySelector('[data-home-mod-errors]');
+      if (badge && count) {
+        badge.hidden = false;
+        badge.dataset.go = 'mods';
+        badge.innerHTML = `<span class="chip bad"><i></i>${count} Mod${count === 1 ? '' : 's'} mit Fehlern</span>`;
+      }
+    }).catch(() => updateStat('mods', '–'));
+    api.saves.list().then((saves) => updateStat('saves', saves.ok ? saves.items.length : '–')).catch(() => updateStat('saves', '–'));
+    api.backups.list().then((backups) => updateStat('backups', backups.items.length)).catch(() => updateStat('backups', '–'));
   }
 };
 
@@ -1702,7 +1735,7 @@ pages.about = {
     const link = (u) => `<a data-ext="https://${u}">${u}</a>`;
     view.innerHTML = `<div class="card about">
       <div class="about-head"><img src="../assets/icon.png" alt="">
-        <div><h2>Agri Nexus v1.0.4-beta</h2><p>Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25</p></div></div>
+        <div><h2>Agri Nexus v1.0.5-beta</h2><p>Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25</p></div></div>
       <hr>
       <section><h3>Projekt &amp; Community</h3>
         <ul>
@@ -2046,7 +2079,7 @@ function buildNav() {
       ([label, keys]) =>
         (label ? `<div class="nav-label">${label}</div>` : '') +
         keys.map((k) => `<button class="nav-item" data-page="${k}">${pages[k].icon}<span>${pages[k].title}</span></button>`).join('')
-    ).join('') + '<div class="nav-spacer"></div><div class="nav-foot">Version 1.0.4-beta · MIT</div>';
+    ).join('') + '<div class="nav-spacer"></div><div class="nav-foot">Version 1.0.5-beta · MIT</div>';
   nav.querySelectorAll('[data-page]').forEach((b) => (b.onclick = () => go(b.dataset.page)));
 }
 
@@ -2060,7 +2093,7 @@ function go(p) {
   view.style.animation = 'none';
   void view.offsetWidth;
   view.style.animation = '';
-  pages[p].render();
+  Promise.resolve(pages[p].render()).catch(showRendererError);
 }
 
 document.addEventListener('click', (e) => {
@@ -2131,4 +2164,4 @@ updateAction.onclick = () => {
   }
   buildNav();
   go('start');
-})();
+})().catch(showRendererError);
