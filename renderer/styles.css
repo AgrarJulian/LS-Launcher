@@ -268,6 +268,46 @@ textarea.input { resize: vertical; min-height: 70px; }
 .toast.error { border-left-color: var(--danger); }
 
 .note { color: var(--text-3); font-size: 12.5px; margin-top: 14px; }
+
+.preference-select { width: min(260px, 42%); flex: none; }
+
+body[data-theme="light"] {
+  --accent: #5d8f14;
+  --accent-hi: #4d7c0f;
+  --accent-lo: #3f6212;
+  --accent-ink: #fff;
+  --accent-soft: rgba(77,124,15,.11);
+  --accent-line: rgba(77,124,15,.34);
+  --bg: #edf2e8;
+  --text: #1b2618;
+  --text-2: #4d5b48;
+  --text-3: #6c7968;
+  --glass: rgba(30,55,20,.045);
+  --glass-hi: rgba(30,55,20,.08);
+  --stroke: rgba(35,55,27,.14);
+  background: var(--bg);
+}
+body[data-theme="light"] .bg { opacity: .32; }
+body[data-theme="light"] .titlebar { background: rgba(249,251,247,.97); }
+body[data-theme="light"] .tb-controls button:hover { background: rgba(20,40,15,.08); }
+body[data-theme="light"] .tb-controls svg { stroke: var(--text-2); }
+body[data-theme="light"] .sidebar { background: rgba(241,246,237,.97); }
+body[data-theme="light"] .card { box-shadow: 0 1px 0 rgba(255,255,255,.8) inset, 0 18px 40px -24px rgba(35,55,27,.25); }
+body[data-theme="light"] .btn:hover { border-color: rgba(35,55,27,.24); }
+body[data-theme="light"] .input,
+body[data-theme="light"] select.input,
+body[data-theme="light"] textarea.input { background-color: rgba(255,255,255,.82); }
+body[data-theme="light"] select.input option { background: #fff; color: #1b2618; }
+body[data-theme="light"] .switch span { background: rgba(35,55,27,.1); }
+body[data-theme="light"] .switch span::after { background: #fff; }
+body[data-theme="light"] ::-webkit-scrollbar-thumb { background-color: rgba(35,55,27,.2); }
+body[data-theme="light"] .modal { background: linear-gradient(180deg, rgba(255,255,255,.99), rgba(243,247,239,.99)); border-color: rgba(35,55,27,.18); box-shadow: 0 40px 80px -20px rgba(35,55,27,.3); }
+body[data-theme="light"] .toast { background: rgba(250,252,248,.98); }
+body[data-theme="light"] .update-banner { color: #f7fee7; }
+
+@media (max-width: 760px) {
+  .preference-select { width: min(220px, 45%); }
+}
 .spin { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.2); border-top-color: var(--accent); border-radius: 50%; animation: rot .7s linear infinite; display: inline-block; }
 @keyframes rot { to { transform: rotate(360deg); } }
 

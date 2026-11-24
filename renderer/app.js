@@ -9,6 +9,92 @@ let cfg = null;
 let page = 'start';
 let timers = [];
 let partnerRefreshTimer = null;
+let uiLanguage = 'de';
+
+const translations = {
+  'Starten': 'Home', 'Hof Profile': 'Farm Profiles', 'Mods & Assets': 'Mods & Assets', 'Saves & Backups': 'Saves & Backups',
+  'Community': 'Community', 'RP & Party Network': 'RP & Party Network', 'Partner': 'Partners', 'Werkzeuge': 'Tools',
+  'Live & Werkstatt': 'Live & Workshop', 'Log-Analyse': 'Log Analyzer', 'Rechner': 'Calculators', 'Server Status': 'Server Status',
+  'Medien': 'Media', 'Screenshots': 'Screenshots', 'System': 'System', 'Einstellungen': 'Settings', 'Über uns': 'About',
+  'Pfade und Verhalten des Launchers.': 'Launcher paths and behavior.', 'Pfade': 'Paths', 'Spiel (FarmingSimulator2025.exe)': 'Game (FarmingSimulator2025.exe)',
+  'Wird beim Start ausgeführt.': 'The game executable launched by the app.', 'Erkennen': 'Detect', 'Wählen': 'Browse',
+  'Profil-Ordner': 'Profile folder', 'Backup-Ordner': 'Backup folder', 'Log-Datei (optional)': 'Log file (optional)', 'Mod-Ordner': 'Mods folder',
+  'Aktuell verwendet': 'Currently used', 'Quelle': 'Source', 'Verhalten': 'Behavior', 'Ressourcenschonender Mod-Abgleich': 'Lower-resource mod scan',
+  'Launcher nach dem Spielstart schließen': 'Close launcher after game starts', 'Automatisches Backup vor jedem Start': 'Back up saves before launch',
+  'Auto-Backups behalten': 'Keep automatic backups', 'Speichern': 'Save', 'Abbrechen': 'Cancel', 'Ja': 'Yes', 'Nein': 'No',
+  'Laden': 'Load', 'Suchen': 'Search', 'Aktualisieren': 'Refresh', 'Liste aktualisieren': 'Refresh list', 'Zurück': 'Back',
+  'Erstellen': 'Create', 'Bearbeiten': 'Edit', 'Löschen': 'Delete', 'Entfernen': 'Remove', 'Öffnen': 'Open', 'Schließen': 'Close',
+  'Keine Installation gefunden. Bitte manuell wählen.': 'No installation found. Please select it manually.', 'Spiel gefunden.': 'Game found.',
+  'Darstellung & Sprache': 'Appearance & language', 'Sprache': 'Language', 'Design': 'Theme', 'Dunkel': 'Dark', 'Hell': 'Light',
+  'Wie im Betriebssystem': 'Use system setting', 'Übernimmt das Farbschema für die gesamte App.': 'Applies the color scheme across the app.',
+  'Deutsch': 'Deutsch', 'English': 'English', 'Einstellungen gespeichert.': 'Settings saved.', 'Version': 'Version',
+  'Deutsch oder Englisch für die Oberfläche und Datumsformate.': 'Choose German or English for the interface and date formats.',
+  'Wähle ein helles, dunkles oder systemgesteuertes Farbschema.': 'Choose a light, dark, or system-controlled color scheme.',
+  'Agri Nexus Partner': 'Agri Nexus Partners', 'Unsere Partner mit Logo, Beschreibung und direktem Link.': 'Our partners, with logos, descriptions, and direct links.',
+  'Website öffnen': 'Open website', 'Noch keine Partner eingetragen': 'No partners added yet',
+  'Füge deine ersten Partner über „Partnerliste verwalten“ hinzu. Die App lädt neue Einträge danach automatisch.': 'Add partners through “Manage partners”. The app loads new entries automatically.',
+  'Farming Simulator 25 wird gestartet …': 'Starting Farming Simulator 25 …', 'Spiel starten': 'Launch game', 'Profil aktivieren': 'Activate profile',
+  'Profil erstellen': 'Create profile', 'Neues Profil': 'New profile', 'Profil löschen': 'Delete profile', 'Profil bearbeiten': 'Edit profile',
+  'Mods synchronisieren': 'Sync mods', 'Alle Mods synchronisieren': 'Sync all mods', 'Host Sync Session': 'Host Sync Session',
+  'Join Sync Session': 'Join Sync Session', 'Keine Mods gefunden': 'No mods found', 'Keine Spielstände gefunden': 'No savegames found',
+  'Kopieren': 'Copy', 'Teilen': 'Share', 'Speicherplatz': 'Storage', 'Fortfahren': 'Continue',
+  'Bereit für die nächste Ernte?': 'Ready for the next harvest?', 'Mod-Ordner, Savegame und Startoptionen pro Hof.': 'Mods folder, savegame, and launch options for each farm.',
+  'Spielstände sichern und mit einem Klick wiederherstellen.': 'Back up and restore savegames with one click.',
+  'Fehler und Warnungen aus dem Spiel-Log – in verständlichem Deutsch.': 'Errors and warnings from the game log, explained clearly.',
+  'Ertrag, Futterbedarf, Mischrationen und Arbeitszeit.': 'Yield, feed requirements, rations, and work time.',
+  'Erreichbarkeit der GIANTS-Dienste und deiner Lieblingsserver.': 'Availability of GIANTS services and your favorite servers.',
+  'Second Screen, Savegame-Werkzeuge, Profil-Sicherungen und Mod-Analyse.': 'Second screen, savegame tools, profile backups, and mod analysis.',
+  'Bilder mit Hof-, Karten- und Spielstand-Kontext versehen und vergleichen.': 'Tag and compare screenshots with farm, map, and savegame details.',
+  'Lobbys, Hofrollen und Arbeitsverträge für gemeinsame RP-Sessions.': 'Lobbies, farm roles, and work contracts for shared RP sessions.',
+  'Verbinde mit der Lobby …': 'Connecting to lobby …', 'Lobby entsperren': 'Unlock lobby', 'Lobby sperren': 'Lock lobby',
+  'Server hinzufügen': 'Add server', 'Ordner öffnen': 'Open folder', 'Backup-Ordner': 'Backup folder', 'Profil-Ordner': 'Profile folder',
+  'Mods-Ordner': 'Mods folder', 'Spielstand': 'Savegame', 'Feld': 'Field', 'Belohnung': 'Reward', 'Status': 'Status',
+  'Offen': 'Open', 'In Arbeit': 'In progress', 'Abgeschlossen': 'Completed', 'Admin': 'Admin', 'Mitglied': 'Member',
+  'Aktualisieren': 'Refresh', 'Automatisch': 'Automatic', 'Manuell': 'Manual', 'Prüfen': 'Check', 'Synchronisieren': 'Synchronize'
+};
+
+function appLocale() { return uiLanguage === 'en' ? 'en-GB' : 'de-DE'; }
+function translateTree(root = document.body) {
+  const toEnglish = uiLanguage === 'en';
+  const map = toEnglish ? translations : Object.fromEntries(Object.entries(translations).map(([de, en]) => [en, de]));
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) {
+    const value = node.nodeValue.trim();
+    if (map[value]) node.nodeValue = node.nodeValue.replace(value, map[value]);
+  }
+  if (root.nodeType === Node.ELEMENT_NODE) {
+    for (const element of [root, ...root.querySelectorAll('[placeholder],[title],[aria-label]')]) {
+      for (const attribute of ['placeholder', 'title', 'aria-label']) {
+        const value = element.getAttribute(attribute);
+        if (value && map[value]) element.setAttribute(attribute, map[value]);
+      }
+    }
+  }
+}
+
+function applyPreferences(preferences = cfg || {}) {
+  uiLanguage = preferences.language === 'en' ? 'en' : 'de';
+  const theme = ['dark', 'light', 'system'].includes(preferences.theme) ? preferences.theme : 'dark';
+  const resolvedTheme = theme === 'system' ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : theme;
+  document.documentElement.lang = uiLanguage;
+  document.body.dataset.theme = resolvedTheme;
+  translateTree();
+}
+
+const uiTranslationObserver = new MutationObserver((records) => {
+  const roots = new Set();
+  for (const record of records) {
+    if (record.type === 'childList') record.addedNodes.forEach((node) => roots.add(node.nodeType === Node.ELEMENT_NODE ? node : record.target));
+    else if (record.type === 'characterData') roots.add(record.target.parentElement || document.body);
+    else roots.add(record.target);
+  }
+  roots.forEach(translateTree);
+});
+uiTranslationObserver.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['placeholder', 'title', 'aria-label'] });
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+  if (cfg && cfg.theme === 'system') applyPreferences(cfg);
+});
 
 // ---------------------------------------------------------------------------
 // Helfer
@@ -24,14 +110,14 @@ const fmtSize = (b) => {
   return (b / Math.pow(1024, i)).toFixed(i ? 1 : 0).replace('.', ',') + ' ' + u[i];
 };
 const fmtDate = (ms) =>
-  new Date(ms).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-const fmtDay = (ms) => new Date(ms).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
-const fmtClock = (ms) => new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  new Date(ms).toLocaleString(appLocale(), { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const fmtDay = (ms) => new Date(ms).toLocaleDateString(appLocale(), { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+const fmtClock = (ms) => new Date(ms).toLocaleTimeString(appLocale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 const fmtHours = (h) => {
   const mins = Math.round(h * 60);
   return Math.floor(mins / 60) + ' h ' + String(mins % 60).padStart(2, '0') + ' min';
 };
-const fmtNum = (n, d = 0) => (isFinite(n) ? n.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }) : '–');
+const fmtNum = (n, d = 0) => (isFinite(n) ? n.toLocaleString(appLocale(), { minimumFractionDigits: d, maximumFractionDigits: d }) : '–');
 const eur = (n) => fmtNum(n, 2) + ' €';
 
 const hueOf = (s) => {
@@ -1516,6 +1602,12 @@ pages.settings = {
     view.innerHTML =
       head('Einstellungen', 'Pfade und Verhalten des Launchers.') +
       `<div class="stack">
+        <div class="card"><h2>Darstellung &amp; Sprache</h2>
+          <div class="setting"><div><b>Sprache</b><small>Deutsch oder Englisch für die Oberfläche und Datumsformate.</small></div>
+            <select class="input preference-select" id="st-language"><option value="de" ${cfg.language !== 'en' ? 'selected' : ''}>Deutsch</option><option value="en" ${cfg.language === 'en' ? 'selected' : ''}>English</option></select></div>
+          <div class="setting"><div><b>Design</b><small>Wähle ein helles, dunkles oder systemgesteuertes Farbschema.</small></div>
+            <select class="input preference-select" id="st-theme"><option value="dark" ${cfg.theme === 'dark' ? 'selected' : ''}>Dunkel</option><option value="light" ${cfg.theme === 'light' ? 'selected' : ''}>Hell</option><option value="system" ${cfg.theme === 'system' ? 'selected' : ''}>Wie im Betriebssystem</option></select></div>
+        </div>
         <div class="card"><h2>Pfade</h2>
           ${row('st-game', 'Spiel (FarmingSimulator2025.exe)', 'Wird beim Start ausgeführt.', cfg.gamePath, 'file', '<button class="btn" id="st-detect">Erkennen</button>')}
           ${row('st-profile', 'Profil-Ordner', 'Enthält gameSettings.xml, savegame-Ordner und die Log-Datei – meist Dokumente\\My Games\\FarmingSimulator2025.', cfg.profilePath, 'dir')}
@@ -1554,6 +1646,11 @@ pages.settings = {
         toast('Spiel gefunden.');
       } else toast('Keine Installation gefunden. Bitte manuell wählen.', true);
     };
+    const languageSelect = document.getElementById('st-language');
+    const themeSelect = document.getElementById('st-theme');
+    const previewPreferences = () => applyPreferences({ ...cfg, language: languageSelect.value, theme: themeSelect.value });
+    languageSelect.onchange = previewPreferences;
+    themeSelect.onchange = previewPreferences;
     document.getElementById('st-save').onclick = async () => {
       cfg.gamePath = document.getElementById('st-game').value.trim();
       cfg.profilePath = document.getElementById('st-profile').value.trim();
@@ -1564,7 +1661,10 @@ pages.settings = {
       cfg.autoBackup = document.getElementById('st-auto').checked;
       cfg.lowPerformanceMode = document.getElementById('st-lowperf').checked;
       cfg.autoBackupKeep = parseInt(document.getElementById('st-keep').value, 10) || 10;
+      cfg.language = languageSelect.value;
+      cfg.theme = themeSelect.value;
       const saved = await persist();
+      applyPreferences(saved);
       L.sig = '';
       toast(saved && saved.settingsError ? 'Einstellungen gespeichert, aber gameSettings.xml: ' + saved.settingsError : 'Einstellungen gespeichert.');
       pages.settings.render();
@@ -1602,7 +1702,7 @@ pages.about = {
     const link = (u) => `<a data-ext="https://${u}">${u}</a>`;
     view.innerHTML = `<div class="card about">
       <div class="about-head"><img src="../assets/icon.png" alt="">
-        <div><h2>Agri Nexus v1.0.3-beta</h2><p>Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25</p></div></div>
+        <div><h2>Agri Nexus v1.0.4-beta</h2><p>Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25</p></div></div>
       <hr>
       <section><h3>Projekt &amp; Community</h3>
         <ul>
@@ -1946,7 +2046,7 @@ function buildNav() {
       ([label, keys]) =>
         (label ? `<div class="nav-label">${label}</div>` : '') +
         keys.map((k) => `<button class="nav-item" data-page="${k}">${pages[k].icon}<span>${pages[k].title}</span></button>`).join('')
-    ).join('') + '<div class="nav-spacer"></div><div class="nav-foot">Version 1.0.3-beta · MIT</div>';
+    ).join('') + '<div class="nav-spacer"></div><div class="nav-foot">Version 1.0.4-beta · MIT</div>';
   nav.querySelectorAll('[data-page]').forEach((b) => (b.onclick = () => go(b.dataset.page)));
 }
 
@@ -2021,6 +2121,7 @@ updateAction.onclick = () => {
 (async function init() {
   api.updates.state().then(renderUpdateBanner).catch(() => {});
   cfg = await api.config.get();
+  applyPreferences(cfg);
   if (!cfg.gamePath) {
     const g = await api.detectGame();
     if (g) {

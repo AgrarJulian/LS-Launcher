@@ -2,7 +2,7 @@
 
 <img src="assets/icon.png" alt="Agri Nexus Logo" width="110" />
 
-# Agri Nexus v1.0.3-beta
+# Agri Nexus v1.0.5-beta
 
 **Free, open-source management tool, mod manager, and companion app for Farming Simulator 25.**
 
@@ -17,7 +17,7 @@
 
 ## 📥 Download & Installation
 
-1. Download the latest version (`Agri-Nexus-1.0.3-beta-x64.exe`) from **[Releases](https://github.com/AgrarJulian/LS-Launcher/releases)**.
+1. Download the latest version (`Agri-Nexus-1.0.4-beta-x64.exe`) from **[Releases](https://github.com/AgrarJulian/LS-Launcher/releases)**.
 2. Run the setup and follow the installation steps.
 3. Select your FS25 game path and your desired mod folder in **Settings**.
 4. Later versions download from GitHub and can be installed from the green in-app update banner.
@@ -50,6 +50,7 @@
 - **RP & Party Network:** WebRTC lobbies with whitelist/rule confirmation, farms & roles, virtual accounts, fleet rentals, contractor rates, field notes, delivery notes, and event/shift management.
 - **Admin Savegame Sync:** Polls a configured HTTPS source every minute while the RP view is open.
 - **Partner Directory:** Displays partner logos, descriptions, and links. The list is fetched from the public GitHub `partners.json` file and refreshes automatically without an app update. The app is read-only; only people with repository write access can change the shared directory.
+- **Preferences:** Choose German or English, and select a light, dark, or system-matched theme.
 
 ---
 
@@ -76,7 +77,7 @@ npm install
 npm start
 ```
 
-`npm run build` creates the Windows NSIS setup. `npm run build:portable` creates an optional portable build, which does not support in-app self-updates. To publish an update, bump `package.json`, commit the change, and push a matching `v<version>` tag (for example `v1.0.4-beta`). The GitHub Actions workflow builds the installer and publishes it with `latest.yml`, which the updater needs. The repository's Actions setting must allow workflows to create releases.
+`npm run build` creates the Windows NSIS setup. `npm run build:portable` creates an optional portable build, which does not support in-app self-updates. To publish an update, bump `package.json`, commit the change, and push a matching `v<version>` tag (for example `v1.0.5-beta`). The GitHub Actions workflow builds the installer and publishes it with `latest.yml`, which the updater needs. The repository's Actions setting must allow workflows to create releases.
 
 ## Updating the Partner Directory
 
