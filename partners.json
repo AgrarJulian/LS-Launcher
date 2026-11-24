@@ -1,10 +1,11 @@
 {
-  "version": 1,
+
+  "version": 0,
   "partners": [
     {
       "id": "mein-partner",
-      "title": "Partnername",
-      "description": "Kurze Beschreibung",
+      "title": "Beispiel Partnername",
+      "description": "Kurze Beschreibung(Hier könnte deine Partnerschaft stehen!)",
       "url": "https://example.com/",
       "logo": "https://example.com/logo.png"
     }
