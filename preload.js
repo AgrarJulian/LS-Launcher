@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld('launcher', {
     set: (cfg) => invoke('config:set', cfg)
   },
   appInfo: () => invoke('app:info'),
+  updates: {
+    state: () => invoke('updates:state'),
+    download: () => invoke('updates:download'),
+    install: () => invoke('updates:install'),
+    onState: (callback) => { const handler = (_event, state) => callback(state); ipcRenderer.on('updates:state', handler); return () => ipcRenderer.removeListener('updates:state', handler); }
+  },
   detectGame: () => invoke('game:detect'),
   launch: () => invoke('game:launch'),
   pick: (kind) => invoke('dialog:pick', kind),

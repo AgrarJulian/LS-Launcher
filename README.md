@@ -2,7 +2,7 @@
 
 <img src="assets/icon.png" alt="Agri Nexus Logo" width="110" />
 
-# Agri Nexus v1.0.2-beta
+# Agri Nexus v1.0.3-beta
 
 **Free, open-source management tool, mod manager, and companion app for Farming Simulator 25.**
 
@@ -17,9 +17,10 @@
 
 ## 📥 Download & Installation
 
-1. Download the latest version (`Agri-Nexus-1.0.2-beta-x64.exe`) from **[Releases](https://github.com/AgrarJulian/LS-Launcher/releases)**.
-2. Run the `.exe` file (portable version – no installation required).
+1. Download the latest version (`Agri-Nexus-1.0.3-beta-x64.exe`) from **[Releases](https://github.com/AgrarJulian/LS-Launcher/releases)**.
+2. Run the setup and follow the installation steps.
 3. Select your FS25 game path and your desired mod folder in **Settings**.
+4. Later versions download from GitHub and can be installed from the green in-app update banner.
 
 > **Windows SmartScreen Note:** Because the `.exe` is currently not digitally signed, Windows may display a security warning on first launch. Simply click **"More info"** and then **"Run anyway"**.
 
@@ -73,10 +74,13 @@ npm install
 
 # Start the launcher in development mode
 npm start
+```
+
+`npm run build` creates the Windows NSIS setup. `npm run build:portable` creates an optional portable build, which does not support in-app self-updates. To publish an update, bump `package.json`, commit the change, and push a matching `v<version>` tag (for example `v1.0.4-beta`). The GitHub Actions workflow builds the installer and publishes it with `latest.yml`, which the updater needs. The repository's Actions setting must allow workflows to create releases.
 
 ## Updating the Partner Directory
 
-The shared directory is stored in [`partners.json`](https://github.com/AgrarJulian/LS-Launcher/edit/main/partners.json). Add entries to the `partners` array and commit the change to `main`. Only repository collaborators with write permission can edit it; the app itself has no partner-add form. The app refreshes the list when opening the tab and at least every 15 minutes, with a manual refresh option and a local cache for offline use.
+The shared directory is stored in [`partners.json`](https://github.com/AgrarJulian/LS-Launcher/edit/main/partners.json). Add entries to the `partners` array and commit the change to `main`. Only repository collaborators with write permission can edit it; the app itself has no partner-add form. The app refreshes the list when opening the tab and every two minutes, with a manual refresh option and a local cache for offline use.
 
 Example entry:
 

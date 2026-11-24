@@ -70,8 +70,15 @@ a:hover { text-decoration: underline; }
 .tb-controls svg { width: 12px; height: 12px; fill: none; stroke: var(--text-2); stroke-width: 1.2; stroke-linecap: round; }
 .tb-controls button:hover svg { stroke: #fff; }
 
+.update-banner { position: relative; z-index: 4; min-height: 46px; padding: 6px 18px; display: flex; align-items: center; justify-content: center; gap: 18px; background: linear-gradient(100deg, #365d0b, #65a30d); color: #f7fee7; border-bottom: 1px solid rgba(217,249,157,.35); font-weight: 650; }
+.update-banner[hidden] { display: none; }
+.update-banner .btn { min-height: 32px; padding: 5px 13px; background: rgba(10,20,3,.35); border-color: rgba(247,254,231,.4); color: #fff; }
+.update-banner .btn:hover:not(:disabled) { background: rgba(10,20,3,.58); }
+.update-banner .btn:disabled { cursor: default; opacity: .8; }
+
 /* Layout ----------------------------------------------------------------- */
 .shell { position: relative; z-index: 2; display: flex; height: calc(100vh - 38px); }
+.has-update-banner .shell { height: calc(100vh - 84px); }
 
 .sidebar {
   width: 236px; flex: none; padding: 20px 14px;

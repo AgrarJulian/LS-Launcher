@@ -1602,7 +1602,7 @@ pages.about = {
     const link = (u) => `<a data-ext="https://${u}">${u}</a>`;
     view.innerHTML = `<div class="card about">
       <div class="about-head"><img src="../assets/icon.png" alt="">
-        <div><h2>Agri Nexus v1.0.2-beta</h2><p>Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25</p></div></div>
+        <div><h2>Agri Nexus v1.0.3-beta</h2><p>Freies Open-Source-Verwaltungstool für den Landwirtschafts-Simulator 25</p></div></div>
       <hr>
       <section><h3>Projekt &amp; Community</h3>
         <ul>
@@ -1946,7 +1946,7 @@ function buildNav() {
       ([label, keys]) =>
         (label ? `<div class="nav-label">${label}</div>` : '') +
         keys.map((k) => `<button class="nav-item" data-page="${k}">${pages[k].icon}<span>${pages[k].title}</span></button>`).join('')
-    ).join('') + '<div class="nav-spacer"></div><div class="nav-foot">Version 1.0.2-beta · MIT</div>';
+    ).join('') + '<div class="nav-spacer"></div><div class="nav-foot">Version 1.0.3-beta · MIT</div>';
   nav.querySelectorAll('[data-page]').forEach((b) => (b.onclick = () => go(b.dataset.page)));
 }
 
@@ -1988,7 +1988,38 @@ document.getElementById('tb-min').onclick = () => api.win.minimize();
 document.getElementById('tb-max').onclick = () => api.win.toggleMaximize();
 document.getElementById('tb-close').onclick = () => api.win.close();
 
+let updaterUiState = { status: 'idle' };
+const updateBanner = document.getElementById('update-banner');
+const updateMessage = document.getElementById('update-message');
+const updateAction = document.getElementById('update-action');
+function renderUpdateBanner(state) {
+  updaterUiState = state || { status: 'idle' };
+  const visible = ['available', 'downloading', 'downloaded'].includes(updaterUiState.status);
+  updateBanner.hidden = !visible;
+  document.body.classList.toggle('has-update-banner', visible);
+  if (!visible) return;
+  const version = esc(updaterUiState.version || 'Neue Version');
+  if (updaterUiState.status === 'available') {
+    updateMessage.textContent = `Agri Nexus ${version} verfügbar`;
+    updateAction.textContent = 'Jetzt aktualisieren & neu starten';
+    updateAction.disabled = false;
+  } else if (updaterUiState.status === 'downloading') {
+    updateMessage.textContent = `Agri Nexus ${version} wird heruntergeladen`;
+    updateAction.textContent = `${updaterUiState.percent || 0} %`;
+    updateAction.disabled = true;
+  } else {
+    updateMessage.textContent = `Agri Nexus ${version} ist geladen – Neustart wird ausgeführt`;
+    updateAction.textContent = 'Bitte warten …';
+    updateAction.disabled = true;
+  }
+}
+api.updates.onState(renderUpdateBanner);
+updateAction.onclick = () => {
+  if (updaterUiState.status === 'available') api.updates.download();
+};
+
 (async function init() {
+  api.updates.state().then(renderUpdateBanner).catch(() => {});
   cfg = await api.config.get();
   if (!cfg.gamePath) {
     const g = await api.detectGame();

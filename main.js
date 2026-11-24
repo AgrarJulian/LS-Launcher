@@ -8,6 +8,7 @@ const http = require('http');
 const os = require('os');
 const { spawn, execFile } = require('child_process');
 const AdmZip = require('adm-zip');
+const { autoUpdater } = require('electron-updater');
 
 const { ZipFile } = require('./lib/zip');
 const { readModInfo, readModIcon, scanScripts, VALID_ID } = require('./lib/modinfo');
@@ -666,6 +667,32 @@ ipcMain.handle('log:analyze', (_e, lastSig) => getLogAnalysis(loadConfig(), last
 // ---------------------------------------------------------------------------
 
 let win = null;
+let updateState = { status: 'idle' };
+
+function sendUpdateState(status, details = {}) {
+  updateState = { status, ...details };
+  if (win && !win.isDestroyed()) win.webContents.send('updates:state', updateState);
+}
+
+function startAutoUpdates() {
+  if (!app.isPackaged || process.platform !== 'win32' || process.env.PORTABLE_EXECUTABLE_DIR) return;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.allowPrerelease = true;
+  autoUpdater.crossOriginHeaders = () => [];
+  autoUpdater.on('checking-for-update', () => sendUpdateState('checking'));
+  autoUpdater.on('update-available', (info) => sendUpdateState('available', { version: info.version }));
+  autoUpdater.on('update-not-available', () => sendUpdateState('none'));
+  autoUpdater.on('download-progress', (progress) => sendUpdateState('downloading', { version: updateState.version, percent: Math.max(0, Math.min(100, Math.round(progress.percent || 0))) }));
+  autoUpdater.on('update-downloaded', (info) => {
+    sendUpdateState('downloaded', { version: info.version });
+    setTimeout(() => autoUpdater.quitAndInstall(false, true), 1200);
+  });
+  autoUpdater.on('error', (error) => sendUpdateState('error', { message: String(error && error.message || error).slice(0, 300) }));
+  const check = () => autoUpdater.checkForUpdates().catch((error) => sendUpdateState('error', { message: String(error && error.message || error).slice(0, 300) }));
+  setTimeout(check, 5000).unref();
+  setInterval(check, 30 * 60 * 1000).unref();
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -703,7 +730,7 @@ if (!app.requestSingleInstanceLock()) {
       win.focus();
     }
   });
-  app.whenReady().then(createWindow);
+  app.whenReady().then(() => { createWindow(); startAutoUpdates(); });
   app.on('window-all-closed', () => app.quit());
   app.on('before-quit', () => { try { if (discord) discord.destroy(); } catch {} try { if (companionServer) companionServer.close(); } catch {} });
   app.whenReady().then(startDiscordRPC);
@@ -721,6 +748,17 @@ ipcMain.handle('win:toggleMaximize', () => {
   else win.maximize();
 });
 ipcMain.handle('win:close', () => win && win.close());
+ipcMain.handle('updates:state', () => updateState);
+ipcMain.handle('updates:download', async () => {
+  if (updateState.status !== 'available') return { ok: false, error: 'Es ist gerade kein Update verfügbar.' };
+  try { await autoUpdater.downloadUpdate(); return { ok: true }; }
+  catch (error) { sendUpdateState('error', { message: String(error && error.message || error).slice(0, 300) }); return { ok: false, error: error.message }; }
+});
+ipcMain.handle('updates:install', () => {
+  if (updateState.status !== 'downloaded') return false;
+  autoUpdater.quitAndInstall(false, true);
+  return true;
+});
 
 ipcMain.handle('shell:external', (_e, url) => {
   try {
