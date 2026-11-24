@@ -24,7 +24,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and publish NSIS installer
-        run: npx electron-builder --win nsis --x64 --publish always
+      - name: Build NSIS installer and update metadata
+        run: npx electron-builder --win nsis --x64 --publish never
+
+      - name: Publish installer and update metadata to GitHub Releases
+        run: node .github/scripts/publish-release.cjs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
